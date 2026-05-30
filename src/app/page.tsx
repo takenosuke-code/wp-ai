@@ -144,12 +144,6 @@ export default function Page() {
   const [convId, setConvId] = useState("");
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
-  const [usage, setUsage] = useState<{
-    totalCost: number;
-    turns: number;
-    blogCount: number;
-    avgCostPerBlog: number;
-  } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -166,11 +160,6 @@ export default function Page() {
   async function loadConversations() {
     const res = await fetch("/api/conversations");
     if (res.ok) setConversations(await res.json());
-  }
-
-  async function loadUsage() {
-    const res = await fetch("/api/usage");
-    if (res.ok) setUsage(await res.json());
   }
 
   async function openConversation(id: string) {
@@ -212,7 +201,6 @@ export default function Page() {
   useEffect(() => {
     loadBlogs();
     loadConversations();
-    loadUsage();
     const saved = localStorage.getItem(CONV_KEY);
     if (saved) {
       openConversation(saved);
@@ -250,7 +238,6 @@ export default function Page() {
           setMessages((m) => [...m, { role: "assistant", text: body, options }]);
         }
         loadConversations(); // refresh sidebar (title / order)
-        loadUsage(); // refresh cost stats
         rafRef.current = null;
         return;
       }
@@ -482,16 +469,6 @@ export default function Page() {
           <h2>公開済み</h2>
           <span className="count">{blogs.length}</span>
         </div>
-        {usage && (
-          <div className="usagebar">
-            <span>
-              総コスト <b>${usage.totalCost.toFixed(4)}</b>
-            </span>
-            <span>
-              1記事あたり <b>{usage.blogCount ? `$${usage.avgCostPerBlog.toFixed(4)}` : "—"}</b>
-            </span>
-          </div>
-        )}
         <div className="list">
           {blogs.length === 0 && (
             <div className="empty center">まだ記事はありません。チャットから公開できます。</div>
