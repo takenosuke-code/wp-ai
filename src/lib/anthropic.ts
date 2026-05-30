@@ -1,8 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Writer/chat model. "claude-sonnet-4-6" is the speed/cost balance;
-// swap to "claude-opus-4-7" for max quality or "claude-haiku-4-5" for cheapest.
-export const MODEL = "claude-sonnet-4-6";
+// Two-model split for cost-to-performance:
+// - MODEL_CHAT runs the whole conversation (goal/angle/outline/metadata/approval).
+//   It's cheap and never writes the long article body.
+// - MODEL_WRITER is invoked server-side ONLY to expand an approved brief into the
+//   finished article — the one place premium quality pays for itself (virality).
+// To revert to all-Sonnet (max quality, higher cost) set MODEL_CHAT to the writer.
+export const MODEL_CHAT = "claude-haiku-4-5";
+export const MODEL_WRITER = "claude-sonnet-4-6";
+
+// Back-compat default (used as the pricing key for the chat loop).
+export const MODEL = MODEL_CHAT;
 export const MAX_TOKENS = 16000;
 
 // Lazy singleton so the client is only constructed at request time (it reads

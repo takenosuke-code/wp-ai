@@ -2,7 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type ChatMsg = { role: "user" | "assistant"; text: string; options?: string[] };
+type DraftPreview = {
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  category: string;
+  tags: string[];
+  featuredImagePrompt: string;
+};
+type ChatMsg = {
+  role: "user" | "assistant";
+  text: string;
+  options?: string[];
+  draft?: DraftPreview;
+};
+type ConvSummary = { id: string; title: string; updatedAt: string };
 type Blog = {
   id: string;
   title: string;
@@ -17,14 +32,16 @@ type Blog = {
 
 const OPT_OPEN = "[[OPTIONS]]";
 const OPT_CLOSE = "[[/OPTIONS]]";
+const CONV_KEY = "wpai.conv";
 
 function toolLabel(name: string): string {
   if (name === "list_existing_posts") return "既存の記事を確認しています";
-  if (name === "save_blog_post") return "記事を公開しています";
+  if (name === "search_existing_posts") return "関連記事を検索しています";
+  if (name === "propose_blog_post") return "下書きを作成しています";
+  if (name === "publish_blog_post") return "記事を公開しています";
   return "作業しています";
 }
 
-// Split a finished assistant message into visible body + clickable options.
 function parseOptions(full: string): { body: string; options: string[] } {
   const open = full.indexOf(OPT_OPEN);
   if (open === -1) return { body: full.trim(), options: [] };
@@ -39,7 +56,6 @@ function parseOptions(full: string): { body: string; options: string[] } {
   return { body, options };
 }
 
-// While streaming, hide the options block (and any partial marker) from the text.
 function displayBody(s: string): string {
   const idx = s.indexOf(OPT_OPEN);
   if (idx !== -1) return s.slice(0, idx).trimEnd();
@@ -49,7 +65,6 @@ function displayBody(s: string): string {
   return s;
 }
 
-// Minimal, safe Markdown → HTML for the post detail view (content is escaped first).
 function renderMarkdown(md: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -123,33 +138,93 @@ export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [streaming, setStreaming] = useState(""); // revealed body of the in-flight reply
-  const [status, setStatus] = useState<string | null>(null); // "what the AI is doing"
+  const [streaming, setStreaming] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConvSummary[]>([]);
+  const [convId, setConvId] = useState("");
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
+  const [usage, setUsage] = useState<{
+    totalCost: number;
+    turns: number;
+    blogCount: number;
+    avgCostPerBlog: number;
+  } | null>(null);
 
-  const sessionId = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const targetRef = useRef(""); // full text received so far
-  const shownRef = useRef(0); // chars currently revealed
-  const doneRef = useRef(false); // network stream finished
+  const targetRef = useRef("");
+  const shownRef = useRef(0);
+  const doneRef = useRef(false);
   const rafRef = useRef<number | null>(null);
-
-  if (!sessionId.current && typeof crypto !== "undefined") {
-    sessionId.current = crypto.randomUUID();
-  }
 
   async function loadBlogs() {
     const res = await fetch("/api/blogs");
     if (res.ok) setBlogs(await res.json());
   }
 
+  async function loadConversations() {
+    const res = await fetch("/api/conversations");
+    if (res.ok) setConversations(await res.json());
+  }
+
+  async function loadUsage() {
+    const res = await fetch("/api/usage");
+    if (res.ok) setUsage(await res.json());
+  }
+
+  async function openConversation(id: string) {
+    setConvId(id);
+    localStorage.setItem(CONV_KEY, id);
+    setSelected(null);
+    const res = await fetch(`/api/conversations/${id}`);
+    if (res.ok) {
+      const data = await res.json();
+      const msgs: ChatMsg[] = (data.messages as { role: string; text: string }[]).map((m) => {
+        if (m.role === "assistant") {
+          const { body, options } = parseOptions(m.text);
+          return { role: "assistant", text: body, options };
+        }
+        return { role: "user", text: m.text };
+      });
+      setMessages(msgs);
+    } else {
+      setMessages([]);
+    }
+  }
+
+  function newChat() {
+    const id = crypto.randomUUID();
+    setConvId(id);
+    localStorage.setItem(CONV_KEY, id);
+    setMessages([]);
+    setInput("");
+    textareaRef.current?.focus();
+  }
+
+  async function deleteConv(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    if (id === convId) newChat();
+    loadConversations();
+  }
+
   useEffect(() => {
     loadBlogs();
+    loadConversations();
+    loadUsage();
+    const saved = localStorage.getItem(CONV_KEY);
+    if (saved) {
+      openConversation(saved);
+    } else {
+      const id = crypto.randomUUID();
+      setConvId(id);
+      localStorage.setItem(CONV_KEY, id);
+    }
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -162,7 +237,7 @@ export default function Page() {
       const target = targetRef.current;
       if (shownRef.current < target.length) {
         const backlog = target.length - shownRef.current;
-        const step = Math.max(2, Math.ceil(backlog / 9)); // steady, with catch-up
+        const step = Math.max(2, Math.ceil(backlog / 9));
         shownRef.current = Math.min(target.length, shownRef.current + step);
         setStreaming(displayBody(target.slice(0, shownRef.current)));
       }
@@ -174,6 +249,8 @@ export default function Page() {
         if (body || options.length) {
           setMessages((m) => [...m, { role: "assistant", text: body, options }]);
         }
+        loadConversations(); // refresh sidebar (title / order)
+        loadUsage(); // refresh cost stats
         rafRef.current = null;
         return;
       }
@@ -185,6 +262,12 @@ export default function Page() {
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
     if (!text || busy) return;
+    let id = convId;
+    if (!id) {
+      id = crypto.randomUUID();
+      setConvId(id);
+      localStorage.setItem(CONV_KEY, id);
+    }
     if (textArg === undefined) setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
     setBusy(true);
@@ -198,7 +281,7 @@ export default function Page() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionId.current, message: text }),
+        body: JSON.stringify({ conversationId: id, message: text }),
       });
 
       const reader = res.body!.getReader();
@@ -224,6 +307,11 @@ export default function Page() {
             setStatus(null);
           } else if (evt.type === "tool") {
             setStatus(toolLabel(evt.name));
+          } else if (evt.type === "draft") {
+            // The proposed (not-yet-published) post: show a rendered preview
+            // inline so the user can review it before approving.
+            setMessages((m) => [...m, { role: "assistant", text: "", draft: evt.draft }]);
+            setStatus(null);
           } else if (evt.type === "blog") {
             loadBlogs();
           } else if (evt.type === "error") {
@@ -254,6 +342,37 @@ export default function Page() {
 
   return (
     <div className="app">
+      <div className="side">
+        <div className="side-head">
+          <span className="side-title">チャット履歴</span>
+          <button className="new-btn" onClick={newChat}>
+            ＋ 新規
+          </button>
+        </div>
+        <div className="conv-list">
+          {conversations.length === 0 && (
+            <div className="empty center" style={{ fontSize: 13 }}>
+              履歴はまだありません
+            </div>
+          )}
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              className={`conv ${c.id === convId ? "active" : ""}`}
+              onClick={() => openConversation(c.id)}
+            >
+              <span className="conv-title">{c.title}</span>
+              <span className="conv-date">
+                {new Date(c.updatedAt).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+              </span>
+              <span className="del" onClick={(e) => deleteConv(c.id, e)} title="削除">
+                ✕
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="col">
         <div className="brand">
           <span className="mark" />
@@ -268,7 +387,7 @@ export default function Page() {
                 <em>「リモート社員のオンボーディングについて記事を書きたい」</em>
                 のように話しかけてください。
                 <br />
-                既存の記事を確認し、切り口と構成を提案し、下書きを書き、承認後に右の一覧へ公開します。
+                まず記事の目的（集客・SEO・情報提供など）を確認し、構成を提案し、下書きを書き、承認後に右の一覧へ公開します。
               </div>
             )}
 
@@ -276,6 +395,29 @@ export default function Page() {
               <div key={i} className={`turn ${m.role}`}>
                 {m.role === "assistant" && <div className="who">アシスタント</div>}
                 {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
+                {m.draft && (
+                  <div className="draft">
+                    <div className="draft-tag">下書きプレビュー（未公開）</div>
+                    <div className="draft-meta">
+                      {m.draft.category} · /{m.draft.slug}
+                    </div>
+                    <h1 className="draft-title">{m.draft.title}</h1>
+                    <div className="draft-eyecatch">アイキャッチ案: {m.draft.featuredImagePrompt}</div>
+                    {m.draft.tags?.length > 0 && (
+                      <div className="chips" style={{ margin: "10px 0" }}>
+                        {m.draft.tags.map((t) => (
+                          <span key={t} className="chip">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      className="prose"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(m.draft.content) }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
 
@@ -340,6 +482,16 @@ export default function Page() {
           <h2>公開済み</h2>
           <span className="count">{blogs.length}</span>
         </div>
+        {usage && (
+          <div className="usagebar">
+            <span>
+              総コスト <b>${usage.totalCost.toFixed(4)}</b>
+            </span>
+            <span>
+              1記事あたり <b>{usage.blogCount ? `$${usage.avgCostPerBlog.toFixed(4)}` : "—"}</b>
+            </span>
+          </div>
+        )}
         <div className="list">
           {blogs.length === 0 && (
             <div className="empty center">まだ記事はありません。チャットから公開できます。</div>
