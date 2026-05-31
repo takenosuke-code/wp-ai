@@ -10,6 +10,7 @@ import {
   type Conversation,
 } from "@/lib/conversations";
 import { computeCost, logUsage, type TurnUsage } from "@/lib/usage";
+import { getSessionUser, unauthorized } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ function withConversationCache(messages: any[]): any[] {
 }
 
 export async function POST(req: NextRequest) {
+  if (!getSessionUser()) return unauthorized();
   const { conversationId, message } = await req.json();
   if (!isValidId(conversationId)) {
     return new Response("invalid conversationId", { status: 400 });

@@ -145,6 +145,12 @@ export default function Page() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
 
+  const [authed, setAuthed] = useState<boolean | null>(null); // null = checking
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const targetRef = useRef("");
@@ -160,6 +166,39 @@ export default function Page() {
   async function loadConversations() {
     const res = await fetch("/api/conversations");
     if (res.ok) setConversations(await res.json());
+  }
+
+  async function doLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (loginBusy) return;
+    setLoginBusy(true);
+    setLoginError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      if (res.ok) {
+        setLoginPassword("");
+        setAuthed(true);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setLoginError(d.error || "ログインに失敗しました");
+      }
+    } catch {
+      setLoginError("通信エラーが発生しました");
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function doLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setMessages([]);
+    setConversations([]);
+    setBlogs([]);
+    setAuthed(false);
   }
 
   async function openConversation(id: string) {
@@ -198,7 +237,19 @@ export default function Page() {
     loadConversations();
   }
 
+  // Check the session on mount.
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => setAuthed(r.ok))
+      .catch(() => setAuthed(false));
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // Load app data only once authenticated.
+  useEffect(() => {
+    if (authed !== true) return;
     loadBlogs();
     loadConversations();
     const saved = localStorage.getItem(CONV_KEY);
@@ -209,11 +260,8 @@ export default function Page() {
       setConvId(id);
       localStorage.setItem(CONV_KEY, id);
     }
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authed]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -327,6 +375,51 @@ export default function Page() {
       ? last.options
       : null;
 
+  if (authed === null) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-loading">読み込み中…</div>
+      </div>
+    );
+  }
+  if (!authed) {
+    return (
+      <div className="auth-screen">
+        <form className="auth-card" onSubmit={doLogin}>
+          <div className="auth-brand">
+            <span className="mark" />
+            <span>ブログアシスタント</span>
+          </div>
+          <h1 className="auth-title">ログイン</h1>
+          <p className="auth-sub">承認されたユーザーのみご利用いただけます。</p>
+          <input
+            className="auth-input"
+            type="email"
+            placeholder="メールアドレス"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            autoFocus
+          />
+          <input
+            className="auth-input"
+            type="password"
+            placeholder="パスワード"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+          />
+          {loginError && <div className="auth-error">{loginError}</div>}
+          <button
+            className="auth-btn"
+            type="submit"
+            disabled={loginBusy || !loginEmail || !loginPassword}
+          >
+            {loginBusy ? "確認中…" : "ログイン"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <div className="side">
@@ -358,6 +451,9 @@ export default function Page() {
             </button>
           ))}
         </div>
+        <button className="logout-btn" onClick={doLogout}>
+          ログアウト
+        </button>
       </div>
 
       <div className="col">
