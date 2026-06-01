@@ -34,8 +34,10 @@ export async function POST(req: NextRequest) {
     const saved = await store.save(post);
     return Response.json(saved);
   } catch (e) {
+    // Log the detail server-side only; don't leak internals (DB errors etc.) to the client.
+    console.error("[publish] store.save failed:", e);
     return Response.json(
-      { error: `公開に失敗しました: ${(e as Error).message}` },
+      { error: "公開に失敗しました。しばらく経ってから再度お試しください。" },
       { status: 500 }
     );
   }
