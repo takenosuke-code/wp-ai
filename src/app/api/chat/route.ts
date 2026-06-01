@@ -15,6 +15,14 @@ import { getSessionUser, unauthorized } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Map tool calls to the 8-step progress bar (see STEPS in page.tsx). The client
+// fills in the steps it owns locally (draft shown → 画像, publish → 公開).
+const STEP_BY_TOOL: Record<string, number> = {
+  search_existing_posts: 3, // 構成・重複チェック
+  propose_blog_post: 4, // AI下書き
+  seo_analyze: 6, // SEOチェック
+};
+
 // Put a cache breakpoint on the last message so the whole conversation prefix is
 // cached for the next turn (0.1× input on a hit). Returns a copy — never mutates
 // the stored conversation. Pairs with the cached system prompt (2 breakpoints).
@@ -87,6 +95,9 @@ export async function POST(req: NextRequest) {
           for (const block of msg.content) {
             if (block.type === "tool_use") {
               emit({ type: "tool", name: block.name });
+              // Drive the top progress bar from real tool milestones (no extra cost).
+              const step = STEP_BY_TOOL[block.name];
+              if (step) emit({ type: "step", step });
               const result = await runTool(block.name, block.input, emit, { conversation: conv });
               toolResults.push({
                 type: "tool_result",

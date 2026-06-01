@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type DraftPreview = {
   title: string;
@@ -10,12 +10,33 @@ type DraftPreview = {
   category: string;
   tags: string[];
   featuredImagePrompt: string;
+  postType?: string;
+};
+type SeoCheck = { label: string; status: string; note?: string };
+type SeoKeyword = { term: string; volume?: string; competition?: string };
+type SeoCompetitor = {
+  title: string;
+  domain?: string;
+  words?: string | number;
+  score?: number;
+  url?: string;
+};
+type SeoReport = {
+  score: number;
+  keyword: string;
+  monthlySearches: string;
+  competition: string;
+  checks: SeoCheck[];
+  keywords: SeoKeyword[];
+  competitors: SeoCompetitor[];
+  recommendation: string;
 };
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
   options?: string[];
   draft?: DraftPreview;
+  seo?: SeoReport;
 };
 type ConvSummary = { id: string; title: string; updatedAt: string };
 type Blog = {
@@ -27,6 +48,7 @@ type Blog = {
   category: string;
   tags: string[];
   featuredImagePrompt: string;
+  featuredImageUrl?: string;
   createdAt: string;
 };
 
@@ -38,7 +60,7 @@ function toolLabel(name: string): string {
   if (name === "list_existing_posts") return "既存の記事を確認しています";
   if (name === "search_existing_posts") return "関連記事を検索しています";
   if (name === "propose_blog_post") return "下書きを作成しています";
-  if (name === "publish_blog_post") return "記事を公開しています";
+  if (name === "seo_analyze") return "競合をWeb検索してSEO分析しています";
   return "作業しています";
 }
 
@@ -70,6 +92,16 @@ function renderMarkdown(md: string): string {
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const inline = (s: string) =>
     esc(s)
+      // images first so the ![]() syntax isn't mangled by emphasis rules.
+      // esc() escapes <>& but NOT quotes, so we must guard against attribute
+      // breakout: only allow http(s)/relative URLs and encode quotes in both src
+      // and alt (alt can derive from a user-controlled filename).
+      .replace(/!\[(.*?)\]\((.*?)\)/g, (_m, alt: string, url: string) => {
+        if (!/^(https?:|\/)/i.test(url.trim())) return "";
+        const safeUrl = url.trim().replace(/"/g, "%22");
+        const safeAlt = alt.replace(/"/g, "&quot;");
+        return `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" />`;
+      })
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
       .replace(/`(.+?)`/g, "<code>$1</code>");
@@ -134,6 +166,406 @@ function renderMarkdown(md: string): string {
   return html;
 }
 
+function PoweredBy({ className = "" }: { className?: string }) {
+  return (
+    <div className={`powered ${className}`}>
+      <svg className="powered-mark" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="nq-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#D9B978" />
+            <stop offset="100%" stopColor="#8A6D2F" />
+          </linearGradient>
+        </defs>
+        <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#nq-grad)" />
+        <path
+          d="M10 22 V10 L22 22 V10"
+          stroke="#fff"
+          strokeWidth="2.6"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="powered-text">
+        Powered by{" "}
+        <b>
+          Nortiq<span className="powered-accent">Labs</span>
+        </b>
+      </span>
+    </div>
+  );
+}
+
+// ── 8-step progress bar (matches the design proposal's 投稿フロー) ──────────
+const STEPS = ["内容", "方向性", "構成", "下書き", "画像", "SEO", "確認", "公開"];
+
+function StepBar({ current }: { current: number }) {
+  return (
+    <div className="steps" role="list" aria-label="投稿の進行状況">
+      {STEPS.map((label, i) => {
+        const n = i + 1;
+        const state = n < current ? "done" : n === current ? "active" : "todo";
+        return (
+          <div key={n} className={`step ${state}`} role="listitem">
+            <span className="step-n">{n < current ? "✓" : String(n).padStart(2, "0")}</span>
+            <span className="step-label">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── SEO + competitor report card (rendered from the seo_analyze tool) ────────
+function ScoreRing({ score }: { score: number }) {
+  const r = 26;
+  const circ = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, score));
+  const off = circ * (1 - pct / 100);
+  return (
+    <svg width="76" height="76" viewBox="0 0 76 76" className="ring" aria-label={`SEOスコア ${pct}`}>
+      <circle cx="38" cy="38" r={r} className="ring-bg" />
+      <circle
+        cx="38"
+        cy="38"
+        r={r}
+        className="ring-fg"
+        strokeDasharray={circ}
+        strokeDashoffset={off}
+        transform="rotate(-90 38 38)"
+      />
+      <text x="38" y="43" textAnchor="middle" className="ring-num">
+        {pct}
+      </text>
+    </svg>
+  );
+}
+
+function compClass(c?: string): string {
+  if (c === "高") return "comp hi";
+  if (c === "中") return "comp mid";
+  if (c === "低") return "comp lo";
+  return "comp";
+}
+
+function SeoCard({ report }: { report: SeoReport }) {
+  return (
+    <div className="seo">
+      <div className="seo-tag">SEO最適化 ＋ 競合調査</div>
+      <div className="seo-grid">
+        {/* CARD 01 — score */}
+        <div className="seo-c">
+          <div className="seo-c-h">SEOスコア</div>
+          <div className="seo-score">
+            <ScoreRing score={report.score} />
+            <div className="seo-score-meta">
+              <div className="kw">「{report.keyword}」</div>
+              {report.monthlySearches && <div className="muted">月間検索数：{report.monthlySearches}</div>}
+              {report.competition && (
+                <div className="muted">
+                  競合の強さ：<span className={compClass(report.competition)}>{report.competition}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* CARD 02 — checklist */}
+        <div className="seo-c">
+          <div className="seo-c-h">チェック項目</div>
+          <ul className="seo-checks">
+            {report.checks.map((c, i) => (
+              <li key={i} className={`chk ${c.status}`}>
+                <span className="chk-i">{c.status === "ok" ? "✓" : c.status === "warn" ? "△" : "＋"}</span>
+                <span className="chk-t">
+                  {c.label}
+                  {c.note && <span className="chk-note">{c.note}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* CARD 03 — keyword suggestions */}
+        <div className="seo-c">
+          <div className="seo-c-h">キーワード候補</div>
+          <ul className="seo-kw">
+            {report.keywords.map((k, i) => (
+              <li key={i}>
+                <span className="kw-term">{k.term}</span>
+                <span className="kw-meta">
+                  {k.volume && <span className="muted">{k.volume}</span>}
+                  {k.competition && <span className={compClass(k.competition)}>競合 {k.competition}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* CARD 04 — competitors */}
+        <div className="seo-c">
+          <div className="seo-c-h">競合ブログ分析（上位記事）</div>
+          <ul className="seo-comp">
+            {report.competitors.map((c, i) => {
+              // c.url is LLM-supplied — only allow http(s) into the href sink.
+              const href =
+                typeof c.url === "string" && /^https?:\/\//i.test(c.url.trim()) ? c.url.trim() : undefined;
+              return (
+              <li key={i}>
+                <div className="cmp-title">
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer noopener">
+                      {c.title}
+                    </a>
+                  ) : (
+                    c.title
+                  )}
+                </div>
+                <div className="cmp-meta muted">
+                  {c.domain && <span>{c.domain}</span>}
+                  {c.words != null && <span>{typeof c.words === "number" ? `${c.words}語` : c.words}</span>}
+                  {c.score != null && <span>SEO {c.score}</span>}
+                </div>
+              </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+
+      {report.recommendation && (
+        <div className="seo-rec">
+          <span className="seo-rec-mark">AIの提案</span>
+          {report.recommendation}
+        </div>
+      )}
+      <div className="seo-foot muted">※検索数・難易度は推定値です。競合記事は実際の検索結果に基づきます。</div>
+    </div>
+  );
+}
+
+// ── Interactive draft preview: per-section image "+" slots + client publish ──
+type SlotImage = { url: string; alt: string };
+
+// Split the draft body at each heading so we can offer a "+" image slot after
+// every section. Concatenating the pieces with "\n" reproduces the original body
+// exactly — so publishing is just (draft text + the images placed), no re-write.
+function splitSections(md: string): string[] {
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const segs: string[] = [];
+  let cur: string[] = [];
+  for (const line of lines) {
+    if (/^#{1,3}\s/.test(line) && cur.length) {
+      segs.push(cur.join("\n"));
+      cur = [line];
+    } else {
+      cur.push(line);
+    }
+  }
+  if (cur.length) segs.push(cur.join("\n"));
+  return segs.length ? segs : [md];
+}
+
+function DraftCard({
+  draft,
+  onStep,
+  onPublished,
+}: {
+  draft: DraftPreview;
+  onStep: (n: number) => void;
+  onPublished: () => void;
+}) {
+  const sections = useMemo(() => splitSections(draft.content), [draft.content]);
+  const [slots, setSlots] = useState<SlotImage[][]>(() => sections.map(() => []));
+  const [activeSlot, setActiveSlot] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function pick(slotIdx: number) {
+    if (uploading || published) return;
+    setActiveSlot(slotIdx);
+    fileRef.current?.click();
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || activeSlot === null) return;
+    const slotIdx = activeSlot;
+    setUploading(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
+      const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || draft.title;
+      setSlots((s) => s.map((arr, i) => (i === slotIdx ? [...arr, { url: data.url, alt }] : arr)));
+      onStep(5);
+    } catch (err: any) {
+      setError(err?.message ?? "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+      setActiveSlot(null);
+    }
+  }
+
+  function removeImg(slotIdx: number, imgIdx: number) {
+    setSlots((s) => s.map((arr, i) => (i === slotIdx ? arr.filter((_, j) => j !== imgIdx) : arr)));
+  }
+
+  // Reassemble final Markdown: each section followed by the images placed under it.
+  function assemble(): { content: string; featuredImageUrl?: string } {
+    let featured: string | undefined;
+    const parts = sections.map((sec, i) => {
+      let md = sec;
+      for (const im of slots[i]) {
+        if (!featured) featured = im.url;
+        md += `\n\n![${im.alt}](${im.url})`;
+      }
+      return md;
+    });
+    return { content: parts.join("\n"), featuredImageUrl: featured };
+  }
+
+  async function doPublish() {
+    setPublishing(true);
+    setError("");
+    try {
+      const { content, featuredImageUrl } = assemble();
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: draft.title,
+          slug: draft.slug,
+          excerpt: draft.excerpt,
+          content,
+          category: draft.category,
+          tags: draft.tags,
+          featuredImagePrompt: draft.featuredImagePrompt,
+          featuredImageUrl,
+          postType: draft.postType,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "公開に失敗しました");
+      setPublished(true);
+      setConfirming(false);
+      onStep(8);
+      onPublished();
+    } catch (err: any) {
+      setError(err?.message ?? "公開に失敗しました");
+      setConfirming(false);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  const imageCount = slots.reduce((n, arr) => n + arr.length, 0);
+
+  return (
+    <div className="draft">
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+      <div className="draft-tag">{published ? "公開済み ✓" : "下書きプレビュー（未公開）"}</div>
+      <div className="draft-meta">
+        {draft.category} · /{draft.slug}
+      </div>
+      <h1 className="draft-title">{draft.title}</h1>
+      <div className="draft-eyecatch">アイキャッチ案: {draft.featuredImagePrompt}</div>
+      {draft.tags?.length > 0 && (
+        <div className="chips" style={{ margin: "10px 0" }}>
+          {draft.tags.map((t) => (
+            <span key={t} className="chip">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {sections.map((sec, i) => (
+        <div key={i}>
+          <div className="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(sec) }} />
+          <div className="imgslot">
+            {slots[i].map((im, j) => (
+              <div key={j} className="thumb">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={im.url} alt={im.alt} />
+                {!published && (
+                  <button className="thumb-x" onClick={() => removeImg(i, j)} aria-label="画像を削除">
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            {!published && (
+              <button
+                className="add-img"
+                onClick={() => pick(i)}
+                disabled={uploading}
+                title="このセクションに画像を追加"
+              >
+                {uploading && activeSlot === i ? (
+                  <span className="add-spin" />
+                ) : (
+                  <>
+                    <span className="add-plus">＋</span>
+                    画像を追加
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {error && <div className="draft-error">{error}</div>}
+
+      {!published ? (
+        <div className="pubbar">
+          {!confirming ? (
+            <>
+              <span className="pub-note muted">
+                {imageCount > 0 ? `画像 ${imageCount} 枚を配置済み` : "画像はそのまま公開（任意）"}
+              </span>
+              <button
+                className="pub-btn"
+                onClick={() => {
+                  setConfirming(true);
+                  onStep(7);
+                }}
+              >
+                公開する →
+              </button>
+            </>
+          ) : (
+            <div className="pub-confirm">
+              <span>公開すると右の一覧と公開サイトに表示されます。よろしいですか？</span>
+              <div className="pub-confirm-btns">
+                <button className="pub-btn" onClick={doPublish} disabled={publishing}>
+                  {publishing ? "公開中…" : "公開する"}
+                </button>
+                <button className="pub-cancel" onClick={() => setConfirming(false)} disabled={publishing}>
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="pubbar">
+          <span className="pub-done">✓ 公開しました。右の「公開済み」一覧に表示されています。</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -144,6 +576,11 @@ export default function Page() {
   const [convId, setConvId] = useState("");
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
+  const [step, setStep] = useState(1);
+
+  // The progress bar only moves forward within a conversation (revisions don't
+  // regress it); it resets when a new/other conversation is opened.
+  const bumpStep = (n: number) => setStep((s) => Math.max(s, n));
 
   const [authed, setAuthed] = useState<boolean | null>(null); // null = checking
   const [loginEmail, setLoginEmail] = useState("");
@@ -205,6 +642,7 @@ export default function Page() {
     setConvId(id);
     localStorage.setItem(CONV_KEY, id);
     setSelected(null);
+    setStep(1);
     const res = await fetch(`/api/conversations/${id}`);
     if (res.ok) {
       const data = await res.json();
@@ -227,6 +665,7 @@ export default function Page() {
     localStorage.setItem(CONV_KEY, id);
     setMessages([]);
     setInput("");
+    setStep(1);
     textareaRef.current?.focus();
   }
 
@@ -305,6 +744,7 @@ export default function Page() {
     }
     if (textArg === undefined) setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
+    bumpStep(1);
     setBusy(true);
     setStatus("考えています");
     setStreaming("");
@@ -340,13 +780,21 @@ export default function Page() {
           if (evt.type === "text") {
             targetRef.current += evt.text;
             setStatus(null);
+            bumpStep(2); // 方向性: the assistant is replying
           } else if (evt.type === "tool") {
             setStatus(toolLabel(evt.name));
+          } else if (evt.type === "step") {
+            bumpStep(evt.step);
           } else if (evt.type === "draft") {
-            // The proposed (not-yet-published) post: show a rendered preview
-            // inline so the user can review it before approving.
+            // The proposed (not-yet-published) post: show an interactive preview
+            // (image "+" slots + 公開する) so the user reviews/publishes it directly.
             setMessages((m) => [...m, { role: "assistant", text: "", draft: evt.draft }]);
             setStatus(null);
+            bumpStep(5); // 画像: a draft now exists; images can be added
+          } else if (evt.type === "seo") {
+            setMessages((m) => [...m, { role: "assistant", text: "", seo: evt.report }]);
+            setStatus(null);
+            bumpStep(6);
           } else if (evt.type === "blog") {
             loadBlogs();
           } else if (evt.type === "error") {
@@ -415,6 +863,7 @@ export default function Page() {
           >
             {loginBusy ? "確認中…" : "ログイン"}
           </button>
+          <PoweredBy className="auth-powered" />
         </form>
       </div>
     );
@@ -454,14 +903,16 @@ export default function Page() {
         <button className="logout-btn" onClick={doLogout}>
           ログアウト
         </button>
+        <PoweredBy className="side-powered" />
       </div>
 
       <div className="col">
         <div className="brand">
           <span className="mark" />
           <span className="name">ブログアシスタント</span>
-          <span className="tag">CHAT → DRAFT → PUBLISH</span>
         </div>
+
+        <StepBar current={step} />
 
         <div className="messages" ref={scrollRef}>
           <div className="thread">
@@ -476,31 +927,14 @@ export default function Page() {
 
             {messages.map((m, i) => (
               <div key={i} className={`turn ${m.role}`}>
-                {m.role === "assistant" && <div className="who">アシスタント</div>}
+                {m.role === "assistant" && (m.text || (!m.draft && !m.seo)) && (
+                  <div className="who">アシスタント</div>
+                )}
                 {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
                 {m.draft && (
-                  <div className="draft">
-                    <div className="draft-tag">下書きプレビュー（未公開）</div>
-                    <div className="draft-meta">
-                      {m.draft.category} · /{m.draft.slug}
-                    </div>
-                    <h1 className="draft-title">{m.draft.title}</h1>
-                    <div className="draft-eyecatch">アイキャッチ案: {m.draft.featuredImagePrompt}</div>
-                    {m.draft.tags?.length > 0 && (
-                      <div className="chips" style={{ margin: "10px 0" }}>
-                        {m.draft.tags.map((t) => (
-                          <span key={t} className="chip">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div
-                      className="prose"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(m.draft.content) }}
-                    />
-                  </div>
+                  <DraftCard draft={m.draft} onStep={bumpStep} onPublished={loadBlogs} />
                 )}
+                {m.seo && <SeoCard report={m.seo} />}
               </div>
             ))}
 
@@ -600,6 +1034,10 @@ export default function Page() {
               {selected.category} · /{selected.slug} · {new Date(selected.createdAt).toLocaleString("ja-JP")}
             </div>
             <h1>{selected.title}</h1>
+            {selected.featuredImageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="doc-hero" src={selected.featuredImageUrl} alt={selected.title} />
+            )}
             <div className="eyecatch">アイキャッチ案: {selected.featuredImagePrompt}</div>
             {selected.tags?.length > 0 && (
               <div className="chips" style={{ marginTop: 12 }}>

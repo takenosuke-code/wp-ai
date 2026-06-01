@@ -1,7 +1,7 @@
 import { store, searchRelatedPosts } from "./store";
 import type { Conversation } from "./conversations";
-import { getClient, MODEL_WRITER, MAX_TOKENS } from "./anthropic";
-import { WRITER_SYSTEM } from "./systemPrompt";
+import { getClient, MODEL_CHAT, MODEL_WRITER, MAX_TOKENS } from "./anthropic";
+import { WRITER_SYSTEM, SEO_ANALYST_SYSTEM } from "./systemPrompt";
 import { computeCost, logUsage } from "./usage";
 
 // Tool definitions handed to Claude. Custom (client-side) tools: plain JSON schema.
@@ -72,10 +72,20 @@ export const tools = [
     },
   },
   {
-    name: "publish_blog_post",
+    name: "seo_analyze",
     description:
-      "Publish the most recently proposed draft to the site's collection. Takes no arguments. Only call after the user has reviewed the preview and explicitly approved.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+      "Run an SEO optimization + competitor analysis for the CURRENT draft (the last one you proposed). Uses real web search to find the actual top-ranking articles for the target keyword. Call this after a draft exists, when the user wants an SEOチェック・競合調査. Pass the single most important target keyword in Japanese — it pulls the draft body itself, so you do NOT pass the article text. Shows the user a report card; afterwards give a one-line takeaway.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keyword: {
+          type: "string",
+          description: "The single primary target keyword for this post, in Japanese (e.g. 在宅勤務 集中力).",
+        },
+      },
+      required: ["keyword"],
+      additionalProperties: false,
+    },
   },
 ];
 
@@ -147,6 +157,37 @@ function parseWriter(text: string, fallbackTitle: string): { title: string; exce
   const excerpt = grab("EXCERPT");
   const content = grab("BODY") || text.trim(); // fallback: whole output as body
   return { title, excerpt, content };
+}
+
+// Parse the SEO analyst's tagged JSON output. Tolerant: prefers the <SEO_JSON>
+// block, then falls back to the first {...} span, so a stray sentence around the
+// JSON doesn't sink the whole report.
+function parseSeoReport(text: string, fallbackKeyword: string): Record<string, any> | null {
+  let raw = "";
+  const tagged = text.match(/<SEO_JSON>([\s\S]*?)<\/SEO_JSON>/i);
+  if (tagged) {
+    raw = tagged[1].trim();
+  } else {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end > start) raw = text.slice(start, end + 1);
+  }
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    return {
+      score: typeof obj.score === "number" ? obj.score : 0,
+      keyword: obj.keyword || fallbackKeyword,
+      monthlySearches: obj.monthly_searches ?? "",
+      competition: obj.competition ?? "",
+      checks: Array.isArray(obj.checks) ? obj.checks : [],
+      keywords: Array.isArray(obj.keywords) ? obj.keywords : [],
+      competitors: Array.isArray(obj.competitors) ? obj.competitors : [],
+      recommendation: obj.recommendation ?? "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function runTool(
@@ -242,18 +283,71 @@ export async function runTool(
     };
   }
 
-  if (name === "publish_blog_post") {
+  if (name === "seo_analyze") {
     const draft = latestDraft(ctx.conversation);
     if (!draft) {
       return {
-        content: "No proposed draft found. Call propose_blog_post first, then publish_blog_post.",
+        content: "No proposed draft found. Propose a draft first, then run seo_analyze.",
         isError: true,
       };
     }
-    const post = await store.save(draft);
-    emit({ type: "blog", blog: post });
+    const keyword = String(input?.keyword ?? "").trim() || draft.title;
+    const userContent =
+      `狙うキーワード: ${keyword}\n\n` +
+      `ブログ下書きタイトル: ${draft.title}\n\n` +
+      `ブログ下書き本文:\n${draft.content}`;
+
+    let analystText = "";
+    try {
+      const client = getClient();
+      const resp = await client.messages.create({
+        model: MODEL_CHAT, // Haiku + web search keeps the analysis cheap; web supplies the facts.
+        max_tokens: MAX_TOKENS,
+        system: [{ type: "text", text: SEO_ANALYST_SYSTEM, cache_control: { type: "ephemeral" } }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 } as any],
+        messages: [{ role: "user", content: userContent }],
+      });
+      analystText = resp.content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("");
+
+      const u: any = resp.usage ?? {};
+      const su = {
+        input: u.input_tokens ?? 0,
+        output: u.output_tokens ?? 0,
+        cacheRead: u.cache_read_input_tokens ?? 0,
+        cacheCreation: u.cache_creation_input_tokens ?? 0,
+      };
+      await logUsage({
+        conversationId: ctx.conversation.id,
+        model: MODEL_CHAT,
+        ...su,
+        cost: computeCost(MODEL_CHAT, su),
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+    } catch (e) {
+      return {
+        content: `SEO analysis failed: ${(e as Error).message}. Tell the user and offer to retry.`,
+        isError: true,
+      };
+    }
+
+    const report = parseSeoReport(analystText, keyword);
+    if (!report) {
+      return {
+        content: "SEO analysis produced no parseable report. Tell the user and offer to retry.",
+        isError: true,
+      };
+    }
+    emit({ type: "seo", report });
     return {
-      content: `Published "${post.title}" (id ${post.id}). It now appears in the site collection.`,
+      content: JSON.stringify({
+        __seo: true,
+        score: report.score,
+        recommendation: report.recommendation,
+        note: "SEO report card shown to the user. Give a ONE-line takeaway (score + biggest improvement) and offer to apply a concrete improvement as a revision if useful. Do not repeat the full report.",
+      }),
       isError: false,
     };
   }

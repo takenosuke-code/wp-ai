@@ -7,6 +7,7 @@ export interface BlogPost {
   category: string;
   tags: string[];
   featuredImagePrompt: string; // prompt for an image model (image generation is a later seam)
+  featuredImageUrl?: string; // public URL of the uploaded featured image (first image placed in the post)
   postType?: string; // intent/format: how-to | marketing | informational | opinion | news | personal
   createdAt: string; // ISO timestamp
 }

@@ -70,6 +70,7 @@ function rowToBlog(r: any): BlogPost {
     category: r.category ?? "",
     tags: r.tags ?? [],
     featuredImagePrompt: r.featured_image_prompt ?? "",
+    featuredImageUrl: r.featured_image_url ?? "",
     postType: r.post_type ?? "",
     createdAt: r.created_at,
   };
@@ -111,6 +112,7 @@ class SupabaseStore implements PublishTarget {
         category: input.category,
         tags: input.tags ?? [],
         featured_image_prompt: input.featuredImagePrompt,
+        featured_image_url: input.featuredImageUrl ?? null,
         post_type: input.postType ?? null,
         embedding,
         content_hash,
