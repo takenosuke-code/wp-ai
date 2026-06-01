@@ -577,6 +577,10 @@ export default function Page() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
   const [step, setStep] = useState(1);
+  // Mobile-only off-canvas drawers (the two side columns). Never toggled on
+  // desktop — the toggle buttons are display:none above the mobile breakpoint.
+  const [sideOpen, setSideOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   // The progress bar only moves forward within a conversation (revisions don't
   // regress it); it resets when a new/other conversation is opened.
@@ -643,6 +647,7 @@ export default function Page() {
     localStorage.setItem(CONV_KEY, id);
     setSelected(null);
     setStep(1);
+    setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
     if (res.ok) {
       const data = await res.json();
@@ -666,6 +671,7 @@ export default function Page() {
     setMessages([]);
     setInput("");
     setStep(1);
+    setSideOpen(false);
     textareaRef.current?.focus();
   }
 
@@ -871,7 +877,16 @@ export default function Page() {
 
   return (
     <div className="app">
-      <div className="side">
+      {(sideOpen || panelOpen) && (
+        <div
+          className="drawer-backdrop"
+          onClick={() => {
+            setSideOpen(false);
+            setPanelOpen(false);
+          }}
+        />
+      )}
+      <div className={`side ${sideOpen ? "open" : ""}`}>
         <div className="side-head">
           <span className="side-title">チャット履歴</span>
           <button className="new-btn" onClick={newChat}>
@@ -908,8 +923,22 @@ export default function Page() {
 
       <div className="col">
         <div className="brand">
+          <button
+            className="mobile-only icon-btn brand-menu"
+            onClick={() => setSideOpen(true)}
+            aria-label="チャット履歴を開く"
+          >
+            ☰
+          </button>
           <span className="mark" />
           <span className="name">ブログアシスタント</span>
+          <button
+            className="mobile-only icon-btn brand-panel"
+            onClick={() => setPanelOpen(true)}
+            aria-label="公開済みを開く"
+          >
+            公開済み<span className="brand-panel-count">{blogs.length}</span>
+          </button>
         </div>
 
         <StepBar current={step} />
@@ -994,17 +1023,31 @@ export default function Page() {
         </div>
       </div>
 
-      <div className="col panel">
+      <div className={`col panel ${panelOpen ? "open" : ""}`}>
         <div className="panel-head">
           <h2>公開済み</h2>
           <span className="count">{blogs.length}</span>
+          <button
+            className="mobile-only icon-btn panel-close"
+            onClick={() => setPanelOpen(false)}
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
         </div>
         <div className="list">
           {blogs.length === 0 && (
             <div className="empty center">まだ記事はありません。チャットから公開できます。</div>
           )}
           {blogs.map((b) => (
-            <button key={b.id} className="card" onClick={() => setSelected(b)}>
+            <button
+              key={b.id}
+              className="card"
+              onClick={() => {
+                setSelected(b);
+                setPanelOpen(false);
+              }}
+            >
               <h3>{b.title}</h3>
               <div className="meta">
                 {b.category} · {new Date(b.createdAt).toLocaleString("ja-JP")}
