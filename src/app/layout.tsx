@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ブログアシスタント",
   description: "チャットでブログ記事を作成・公開する。",
+};
+
+// Without this, phones render at a ~980px desktop width and scale down, so the
+// responsive media queries never fire. Required for the mobile layout to work.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
