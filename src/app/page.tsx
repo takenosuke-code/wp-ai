@@ -618,6 +618,7 @@ function SeoScreen({
         </div>
 
         <div className="seo-cards">
+          <div className="seo-col">
           {/* CARD 01 — score */}
           <div className="seo-card">
             <div className="seo-card-h">
@@ -657,6 +658,34 @@ function SeoScreen({
             </div>
           </div>
 
+          {/* CARD 03 — checks */}
+          <div className="seo-card">
+            <div className="seo-card-h">
+              <span className="seo-card-ic">
+                <Ic d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </span>
+              <div className="seo-card-ht">
+                <div className="seo-card-t">チェック項目</div>
+                <div className="seo-card-sub">AIが自動で確認しました</div>
+              </div>
+            </div>
+            <ul className="seo-checks">
+              {report.checks.map((c, i) => (
+                <li key={i} className={`chk ${c.status}`}>
+                  <span className="chk-i">
+                    {c.status === "ok" ? "✓" : c.status === "warn" ? "△" : "＋"}
+                  </span>
+                  <span className="chk-t">
+                    {c.label}
+                    {c.note && <span className="chk-note">{c.note}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          </div>
+
+          <div className="seo-col">
           {/* CARD 02 — keyword candidates (selectable) */}
           <div className="seo-card">
             <div className="seo-card-h">
@@ -700,32 +729,6 @@ function SeoScreen({
             </button>
           </div>
 
-          {/* CARD 03 — checks */}
-          <div className="seo-card">
-            <div className="seo-card-h">
-              <span className="seo-card-ic">
-                <Ic d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-              </span>
-              <div className="seo-card-ht">
-                <div className="seo-card-t">チェック項目</div>
-                <div className="seo-card-sub">AIが自動で確認しました</div>
-              </div>
-            </div>
-            <ul className="seo-checks">
-              {report.checks.map((c, i) => (
-                <li key={i} className={`chk ${c.status}`}>
-                  <span className="chk-i">
-                    {c.status === "ok" ? "✓" : c.status === "warn" ? "△" : "＋"}
-                  </span>
-                  <span className="chk-t">
-                    {c.label}
-                    {c.note && <span className="chk-note">{c.note}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
           {/* CARD 04 — competitors */}
           <div className="seo-card">
             <div className="seo-card-h">
@@ -767,6 +770,7 @@ function SeoScreen({
                 );
               })}
             </ul>
+          </div>
           </div>
         </div>
 
@@ -929,7 +933,7 @@ function PreviewPane({
     let featured: string | undefined;
     const parts = sections.map((sec, i) => {
       let md = sec;
-      for (const im of slots[i]) {
+      for (const im of slots[i] ?? []) {
         if (!featured) featured = im.url;
         md += `\n\n![${im.alt}](${im.url})`;
       }
@@ -1039,9 +1043,9 @@ function PreviewPane({
           {sections.map((sec, i) => (
             <div key={i}>
               <div className="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(sec) }} />
-              {slots[i].length > 0 && (
+              {(slots[i] ?? []).length > 0 && (
                 <div className="sec-images">
-                  {slots[i].map((im, j) => (
+                  {(slots[i] ?? []).map((im, j) => (
                     <figure key={j} className="sec-img">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={im.url} alt={im.alt} />

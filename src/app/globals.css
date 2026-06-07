@@ -2056,10 +2056,17 @@ body {
 }
 
 .seo-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  align-items: flex-start;
   gap: 16px;
-  align-items: start;
+}
+/* two independent columns so cards stack tightly (no row-aligned gaps) */
+.seo-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .seo-card {
   background: var(--surface);
@@ -2255,7 +2262,7 @@ body {
     display: none;
   }
   .seo-cards {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
   .seo-main {
     padding: 18px 16px 32px;
