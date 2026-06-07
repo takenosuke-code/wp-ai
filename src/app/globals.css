@@ -28,6 +28,8 @@
   --shadow: 0 1px 2px rgba(26, 25, 23, 0.04), 0 8px 24px rgba(26, 25, 23, 0.05);
   --font-sans: "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Noto Serif JP", serif;
+  /* accent italic serif (proposal §06): the Loop "L" mark + italic flourishes */
+  --font-accent: "Instrument Serif", Georgia, "Times New Roman", serif;
   --radius: 14px;
 }
 
@@ -64,46 +66,42 @@ body {
   min-height: 0;
 }
 
-/* Region C: the two-column body fills the remaining height. */
+/* Region C — the body is the "Classic Split" 2カラム: chat | live preview.
+   The chat-history sidebar is an off-canvas drawer at ALL widths (opened by the
+   ☰ button in the header), so the two-column split is the only main content. */
 .body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
 }
 
-/* Medium: hide the history column (it becomes the ☰ drawer) so the chat +
-   live-preview two-column split — the mockup's main body — gets full room. */
-@media (max-width: 1100px) {
-  .body {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  }
-  .side {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 84vw;
-    max-width: 330px;
-    z-index: 40;
-    transform: translateX(-100%);
-    transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
-    box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
-  }
-  .side.open {
-    transform: translateX(0);
-  }
-  /* surface the ☰ history toggle in the header below 1100 */
-  .topbar .brand-menu {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    font-size: 16px;
-    line-height: 1;
-  }
+/* The history sidebar — a drawer at every width (it never takes a column). */
+.side {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 84vw;
+  max-width: 330px;
+  z-index: 40;
+  transform: translateX(-100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+}
+.side.open {
+  transform: translateX(0);
+}
+/* the ☰ history toggle lives in the header at all widths */
+.topbar .brand-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
 }
 
 /* ---------- Region A: top header bar ---------- */
@@ -457,12 +455,11 @@ body {
 }
 .mark::after {
   content: "L";
-  /* the Loop "L" is a Didone-style italic (per the logo art); Noto Serif JP has
-     no true Latin italic, so use a real-italic Latin serif for the mark only. */
-  font-family: Georgia, "Times New Roman", serif;
+  /* accent italic serif — Instrument Serif (proposal §06), Georgia as fallback */
+  font-family: var(--font-accent);
   font-style: italic;
   font-weight: 600;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1;
   color: #fff;
   transform: translateY(0.5px);
@@ -1182,6 +1179,22 @@ body {
   border-radius: 999px;
   padding: 4px 11px;
   margin-bottom: 14px;
+  /* §03 "薄紫のバッジが点滅" while the AI is editing the draft */
+  animation: badge-blink 1.4s ease-in-out infinite;
+}
+@keyframes badge-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-updating {
+    animation: none;
+  }
 }
 .preview-chips {
   display: flex;

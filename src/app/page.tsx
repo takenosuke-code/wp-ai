@@ -1187,7 +1187,7 @@ export default function Page() {
       <header className="topbar">
         <div className="topbar-l">
           <button
-            className="mobile-only icon-btn brand-menu"
+            className="icon-btn brand-menu"
             onClick={() => setSideOpen(true)}
             aria-label="チャット履歴を開く"
           >
