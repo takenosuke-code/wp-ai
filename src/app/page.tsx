@@ -316,12 +316,14 @@ const STEPS = [
   "公開",
 ];
 
-function StepBar({ current }: { current: number }) {
+// `current` = the step in progress now; `done` = steps actually completed (a set,
+// not "everything below current") so a step is never shown done before it happens.
+function StepBar({ current, done }: { current: number; done: number[] }) {
   return (
     <div className="steps" role="list" aria-label="投稿の進行状況">
       {STEPS.map((label, i) => {
         const n = i + 1;
-        const state = n < current ? "done" : n === current ? "active" : "todo";
+        const state = n === current ? "active" : done.includes(n) ? "done" : "todo";
         return (
           <div
             key={n}
@@ -565,7 +567,7 @@ function PreviewPane({
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || draft.title;
       setSlots((s) => s.map((arr, i) => (i === slotIdx ? [...arr, { url: data.url, alt }] : arr)));
-      onStep(5);
+      onStep(2); // 画像をアップ: an image was placed
     } catch (err: any) {
       setError(err?.message ?? "アップロードに失敗しました");
     } finally {
@@ -746,7 +748,7 @@ function PreviewPane({
                 className="pub-btn"
                 onClick={() => {
                   setConfirming(true);
-                  onStep(7);
+                  onStep(7); // entering 公開 (confirm dialog open)
                 }}
               >
                 公開する →
@@ -835,7 +837,11 @@ export default function Page() {
   const [convId, setConvId] = useState("");
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
+  // Progress: `step` = the step in progress; `stepsDone` = steps actually
+  // completed (a set). We track completion explicitly so a step is never marked
+  // done before it happens (e.g. 画像をアップ stays open until images are added).
   const [step, setStep] = useState(1);
+  const [stepsDone, setStepsDone] = useState<number[]>([]);
   // The CURRENT draft, lifted to page state so it renders in the RIGHT live
   // preview pane (region C) instead of inside the chat stream. The latest draft
   // event wins (revisions replace it). `publishConfirming` is also lifted so the
@@ -851,7 +857,20 @@ export default function Page() {
 
   // The progress bar only moves forward within a conversation (revisions don't
   // regress it); it resets when a new/other conversation is opened.
-  const bumpStep = (n: number) => setStep((s) => Math.max(s, n));
+  // reachStep: set the step in progress. markDone: record completed step(s).
+  const reachStep = (n: number) => setStep((s) => Math.max(s, n));
+  const markDone = (...ns: number[]) =>
+    setStepsDone((d) => Array.from(new Set([...d, ...ns])));
+  // Map the writer/preview pane's events to the new flow (see STEPS):
+  //   2 画像をアップ (image added) · 8 公開 (published).
+  const onPreviewStep = (n: number) => {
+    if (n === 2) markDone(2); // an image was placed in the draft
+    if (n === 7) reachStep(8); // publish confirm opened → 公開 in progress
+    if (n >= 8) {
+      reachStep(8);
+      markDone(1, 2, 3, 4, 5, 6, 7, 8); // published → whole flow complete
+    }
+  };
 
   const [authed, setAuthed] = useState<boolean | null>(null); // null = checking
   const [loginEmail, setLoginEmail] = useState("");
@@ -914,6 +933,7 @@ export default function Page() {
     localStorage.setItem(CONV_KEY, id);
     setSelected(null);
     setStep(1);
+    setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
     setMobileView("chat");
@@ -941,6 +961,7 @@ export default function Page() {
     setMessages([]);
     setInput("");
     setStep(1);
+    setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
     setMobileView("chat");
@@ -1003,6 +1024,12 @@ export default function Page() {
         if (body || options.length || confirm) {
           setMessages((m) => [...m, { role: "assistant", text: body, options, confirm }]);
         }
+        // §02/step bar: the confirm card means content is gathered (1 done) and
+        // the AI is at the 要約・確認 step (3). Until then we stay on 内容を伝える.
+        if (confirm) {
+          markDone(1);
+          reachStep(3);
+        }
         loadConversations(); // refresh sidebar (title / order)
         rafRef.current = null;
         return;
@@ -1023,7 +1050,7 @@ export default function Page() {
     }
     if (textArg === undefined) setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
-    bumpStep(1);
+    reachStep(1); // 内容を伝える — stays here through the whole Q&A gathering
     setBusy(true);
     setStatus("考えています");
     setStreaming("");
@@ -1059,11 +1086,12 @@ export default function Page() {
           if (evt.type === "text") {
             targetRef.current += evt.text;
             setStatus(null);
-            bumpStep(2); // 方向性: the assistant is replying
+            // No step change: the assistant replying is still 内容を伝える (1).
           } else if (evt.type === "tool") {
             setStatus(toolLabel(evt.name));
           } else if (evt.type === "step") {
-            bumpStep(evt.step);
+            // Backend tool→step hints are ignored: the step bar is driven by the
+            // real client-side milestones below (confirm card, draft, seo, publish).
           } else if (evt.type === "draft") {
             // The proposed (not-yet-published) post. It now lives in the RIGHT
             // live-preview pane (region C), not the chat stream. We also drop a
@@ -1077,11 +1105,13 @@ export default function Page() {
               { role: "assistant", text: "", draftMarker: true },
             ]);
             setStatus(null);
-            bumpStep(5); // 画像: a draft now exists; images can be added
+            // Draft written → content (1) + AI要約・確認 (3) done; now プレビュー (5).
+            markDone(1, 3);
+            reachStep(5);
           } else if (evt.type === "seo") {
             setMessages((m) => [...m, { role: "assistant", text: "", seo: evt.report }]);
             setStatus(null);
-            bumpStep(6);
+            markDone(4); // SEOチェック done (it runs against the existing draft)
           } else if (evt.type === "blog") {
             loadBlogs();
           } else if (evt.type === "error") {
@@ -1168,7 +1198,7 @@ export default function Page() {
     if (!draft) return;
     setPublishConfirming(true);
     setMobileView("preview");
-    bumpStep(7);
+    reachStep(8); // entering 公開
   }
 
   return (
@@ -1244,7 +1274,7 @@ export default function Page() {
       </header>
 
       {/* ── Region B: full-width 8-step pill row ──────────────────────────── */}
-      <StepBar current={step} />
+      <StepBar current={step} done={stepsDone} />
 
       {/* ── Region C: two-column body (chat | live preview) ───────────────── */}
       <div className={`body view-${mobileView}`}>
@@ -1394,7 +1424,7 @@ export default function Page() {
               aiUpdating={busy}
               confirming={publishConfirming}
               setConfirming={setPublishConfirming}
-              onStep={bumpStep}
+              onStep={onPreviewStep}
               onPublished={loadBlogs}
             />
           ) : (
