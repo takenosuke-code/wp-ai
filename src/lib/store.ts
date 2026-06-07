@@ -47,11 +47,13 @@ class LocalJsonStore implements PublishTarget {
 
   async save(input: NewBlogPost): Promise<BlogPost> {
     const posts = await this.list();
+    const now = new Date().toISOString();
     const post: BlogPost = {
       ...input,
       tags: input.tags ?? [],
       id: randomUUID(),
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      publishAt: input.publishAt ?? now,
     };
     posts.unshift(post);
     await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
@@ -73,6 +75,7 @@ function rowToBlog(r: any): BlogPost {
     featuredImageUrl: r.featured_image_url ?? "",
     postType: r.post_type ?? "",
     createdAt: r.created_at,
+    publishAt: r.publish_at ?? r.created_at,
   };
 }
 
@@ -114,6 +117,7 @@ class SupabaseStore implements PublishTarget {
         featured_image_prompt: input.featuredImagePrompt,
         featured_image_url: input.featuredImageUrl ?? null,
         post_type: input.postType ?? null,
+        publish_at: input.publishAt ?? new Date().toISOString(),
         embedding,
         content_hash,
       })

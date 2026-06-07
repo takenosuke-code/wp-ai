@@ -3034,3 +3034,88 @@ body {
   bottom: 0;
   background: var(--surface);
 }
+
+/* §07 schedule options */
+.sch-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 13px 15px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sch-opt:hover {
+  border-color: var(--ink-faint);
+}
+.sch-opt.on {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.sch-radio {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  position: relative;
+}
+.sch-opt.on .sch-radio {
+  border-color: var(--accent);
+}
+.sch-opt.on .sch-radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sch-opt-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sch-opt-h {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.sch-opt-d {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.sch-when {
+  padding: 4px 2px 0;
+}
+.sch-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.sch-confirm-when {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 8px;
+  padding: 7px 11px;
+}
+.sched-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 5px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}

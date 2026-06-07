@@ -62,6 +62,7 @@ type Blog = {
   featuredImagePrompt: string;
   featuredImageUrl?: string;
   createdAt: string;
+  publishAt?: string;
 };
 
 const OPT_OPEN = "[[OPTIONS]]";
@@ -842,6 +843,7 @@ function PreviewPane({
   aiUpdating,
   confirming,
   setConfirming,
+  publishAt,
   onStep,
   onPublished,
 }: {
@@ -850,6 +852,7 @@ function PreviewPane({
   aiUpdating: boolean;
   confirming: boolean;
   setConfirming: (v: boolean) => void;
+  publishAt: string | null;
   onStep: (n: number) => void;
   onPublished: () => void;
 }) {
@@ -960,6 +963,7 @@ function PreviewPane({
           featuredImagePrompt: draft.featuredImagePrompt,
           featuredImageUrl,
           postType: draft.postType,
+          publishAt: publishAt ?? undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1091,7 +1095,11 @@ function PreviewPane({
           The confirm dialog and the done message still anchor at the bottom. */}
       {published ? (
         <div className="pubbar">
-          <span className="pub-done">✓ 公開しました。右の「公開済み」一覧に表示されています。</span>
+          <span className="pub-done">
+            {publishAt
+              ? `✓ 予約しました（${fmtJst(publishAt)} に公開）。`
+              : "✓ 公開しました。右の「公開済み」一覧に表示されています。"}
+          </span>
         </div>
       ) : confirming ? (
         <div className="pubbar">
@@ -1108,7 +1116,7 @@ function PreviewPane({
               </div>
               <div>
                 <dt>公開日時</dt>
-                <dd>今すぐ公開（即時）</dd>
+                <dd>{publishAt ? `${fmtJst(publishAt)}（予約）` : "今すぐ公開（即時）"}</dd>
               </div>
               {imageCount > 0 && (
                 <div>
@@ -1328,6 +1336,128 @@ function TitleSettings({
   );
 }
 
+// ── §07 schedule helpers (the product is Japan-facing; Supabase stores UTC) ──
+// Current JST wall-clock as a datetime-local value "YYYY-MM-DDTHH:mm".
+function jstNowLocal(): string {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .format(new Date())
+    .replace(" ", "T");
+}
+// A naive JST datetime-local string → absolute UTC ISO (force +09:00).
+function jstLocalToUtc(local: string): string {
+  return new Date(`${local}:00+09:00`).toISOString();
+}
+// A UTC ISO instant → friendly JST string for display.
+function fmtJst(utcIso: string): string {
+  return new Date(utcIso).toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// §07 スケジュール: choose 今すぐ公開 or a future date/time (interpreted as JST).
+function ScheduleStep({
+  onBack,
+  onCancel,
+  onProceed,
+}: {
+  onBack: () => void;
+  onCancel: () => void;
+  onProceed: (publishAt: string | null) => void;
+}) {
+  const [mode, setMode] = useState<"now" | "later">("now");
+  const [dt, setDt] = useState("");
+  const minDt = jstNowLocal();
+  const utc = mode === "later" && dt ? jstLocalToUtc(dt) : null;
+  const isFuture = utc != null && new Date(utc).getTime() > Date.now();
+  const canProceed = mode === "now" || isFuture;
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="ts-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ts-head">
+          <div>
+            <div className="ts-step">STEP 07 / 08</div>
+            <h2 className="ts-title">スケジュール</h2>
+            <div className="ts-sub">今すぐ公開するか、日時を指定して予約します。</div>
+          </div>
+          <button className="ts-x" onClick={onCancel} aria-label="閉じる">
+            ✕
+          </button>
+        </div>
+        <div className="ts-body">
+          <button
+            className={`sch-opt ${mode === "now" ? "on" : ""}`}
+            onClick={() => setMode("now")}
+          >
+            <span className={`sch-radio ${mode === "now" ? "on" : ""}`} />
+            <span className="sch-opt-t">
+              <span className="sch-opt-h">今すぐ公開</span>
+              <span className="sch-opt-d">確定するとすぐに公開サイトへ表示されます。</span>
+            </span>
+          </button>
+          <button
+            className={`sch-opt ${mode === "later" ? "on" : ""}`}
+            onClick={() => setMode("later")}
+          >
+            <span className={`sch-radio ${mode === "later" ? "on" : ""}`} />
+            <span className="sch-opt-t">
+              <span className="sch-opt-h">日時を指定して予約</span>
+              <span className="sch-opt-d">
+                指定した時刻になるまで公開サイトには表示されません。
+              </span>
+            </span>
+          </button>
+          {mode === "later" && (
+            <div className="sch-when">
+              <label className="ts-field">
+                <span className="ts-flabel">公開日時（日本時間 JST）</span>
+                <input
+                  className="ts-input"
+                  type="datetime-local"
+                  value={dt}
+                  min={minDt}
+                  onChange={(e) => setDt(e.target.value)}
+                />
+              </label>
+              {dt && !isFuture && (
+                <div className="sch-warn">未来の日時を指定してください。</div>
+              )}
+              {utc && isFuture && (
+                <div className="sch-confirm-when">予約: {fmtJst(utc)} に公開</div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="ts-foot">
+          <button className="pub-cancel" onClick={onBack}>
+            ‹ 戻る
+          </button>
+          <button
+            className="pub-btn"
+            disabled={!canProceed}
+            onClick={() => onProceed(mode === "now" ? null : utc)}
+          >
+            確認へ進む →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -1354,6 +1484,9 @@ export default function Page() {
   const [publishConfirming, setPublishConfirming] = useState(false);
   // §06 タイトル設定: edit title/slug/category/tags/excerpt before publishing.
   const [titleOpen, setTitleOpen] = useState(false);
+  // §07 スケジュール: the chosen publish time (UTC ISO; null = 今すぐ).
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [publishAt, setPublishAt] = useState<string | null>(null);
   // §03: images uploaded in the chat composer (before/while drafting). They show
   // as cards in the chat and are auto-placed into the draft (see PreviewPane).
   const [chatImages, setChatImages] = useState<ChatImage[]>([]);
@@ -1466,6 +1599,8 @@ export default function Page() {
     setDraft(null);
     setPublishConfirming(false);
     setTitleOpen(false);
+    setScheduleOpen(false);
+    setPublishAt(null);
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
@@ -1503,6 +1638,8 @@ export default function Page() {
     setDraft(null);
     setPublishConfirming(false);
     setTitleOpen(false);
+    setScheduleOpen(false);
+    setPublishAt(null);
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
@@ -1860,6 +1997,14 @@ export default function Page() {
     setDraft((d) => (d ? { ...d, ...fields } : d));
     setTitleOpen(false);
     markDone(6);
+    reachStep(7); // → スケジュール
+    setScheduleOpen(true);
+  }
+  // After スケジュール: record the publish time (null = 今すぐ) and open the confirm.
+  function proceedFromSchedule(when: string | null) {
+    setPublishAt(when);
+    setScheduleOpen(false);
+    markDone(7);
     reachStep(8);
     setPublishConfirming(true);
   }
@@ -1871,6 +2016,16 @@ export default function Page() {
           draft={draft}
           onCancel={() => setTitleOpen(false)}
           onProceed={proceedFromTitle}
+        />
+      )}
+      {scheduleOpen && draft && (
+        <ScheduleStep
+          onCancel={() => setScheduleOpen(false)}
+          onBack={() => {
+            setScheduleOpen(false);
+            setTitleOpen(true);
+          }}
+          onProceed={proceedFromSchedule}
         />
       )}
       {seoOpen && seoReport && (
@@ -2202,6 +2357,7 @@ export default function Page() {
               aiUpdating={busy}
               confirming={publishConfirming}
               setConfirming={setPublishConfirming}
+              publishAt={publishAt}
               onStep={onPreviewStep}
               onPublished={loadBlogs}
             />
@@ -2238,9 +2394,17 @@ export default function Page() {
                 setPanelOpen(false);
               }}
             >
-              <h3>{b.title}</h3>
+              <h3>
+                {b.title}
+                {b.publishAt && new Date(b.publishAt).getTime() > Date.now() && (
+                  <span className="sched-badge">予約</span>
+                )}
+              </h3>
               <div className="meta">
-                {b.category} · {new Date(b.createdAt).toLocaleString("ja-JP")}
+                {b.category} ·{" "}
+                {b.publishAt && new Date(b.publishAt).getTime() > Date.now()
+                  ? `${fmtJst(b.publishAt)} 公開予定`
+                  : new Date(b.createdAt).toLocaleString("ja-JP")}
               </div>
               <div className="ex">{b.excerpt}</div>
               {b.tags?.length > 0 && (

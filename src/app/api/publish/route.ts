@@ -28,6 +28,12 @@ export async function POST(req: NextRequest) {
     featuredImagePrompt: String(b.featuredImagePrompt ?? ""),
     featuredImageUrl: b.featuredImageUrl ? String(b.featuredImageUrl) : undefined,
     postType: b.postType ? String(b.postType) : undefined,
+    // §07 schedule: ISO (UTC) instant; only accept a valid future-or-now date,
+    // else publish immediately. Guards against bad/past client input.
+    publishAt:
+      typeof b.publishAt === "string" && !Number.isNaN(Date.parse(b.publishAt))
+        ? new Date(b.publishAt).toISOString()
+        : undefined,
   };
 
   try {
