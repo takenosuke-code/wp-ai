@@ -2757,3 +2757,111 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── §03 "AI is working" feedback ───────────────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+/* shimmer the chat status text (Claude/Gemini-style "working" feel) */
+.status > span:last-child {
+  background: linear-gradient(90deg, var(--ink-soft) 30%, var(--ai) 50%, var(--ink-soft) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+/* one-time uploaded-image card shown inline in the chat flow */
+.upload-card.inflow {
+  margin: 6px 0 2px;
+  max-width: 280px;
+}
+
+/* preview-pane "作成中" loader (blinking badge + shimmer skeleton) */
+.preview-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 2px;
+}
+.pl-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 999px;
+  padding: 6px 13px;
+  margin-bottom: 4px;
+  animation: badge-blink 1.4s ease-in-out infinite;
+}
+.pl-spark {
+  display: inline-block;
+  animation: spin 2.4s linear infinite;
+}
+.sk {
+  background: linear-gradient(
+    90deg,
+    var(--line-soft) 25%,
+    var(--line) 38%,
+    var(--line-soft) 54%
+  );
+  background-size: 200% 100%;
+  border-radius: 7px;
+  animation: shimmer 1.5s linear infinite;
+}
+.pl-line {
+  height: 13px;
+}
+.pl-title {
+  height: 26px;
+  width: 70%;
+  margin: 4px 0;
+}
+.pl-block {
+  height: 150px;
+  width: 100%;
+  border-radius: 10px;
+}
+.pl-hint {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.w35 {
+  width: 35%;
+}
+.w50 {
+  width: 50%;
+}
+.w60 {
+  width: 60%;
+}
+.w80 {
+  width: 80%;
+}
+.w85 {
+  width: 85%;
+}
+.w90 {
+  width: 90%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status > span:last-child,
+  .pl-badge,
+  .pl-spark,
+  .sk {
+    animation: none;
+  }
+  .status > span:last-child {
+    -webkit-text-fill-color: var(--ink-soft);
+  }
+}

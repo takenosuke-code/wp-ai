@@ -44,6 +44,9 @@ type ChatMsg = {
   // §04: SEO results open a dedicated full-screen view; the chat keeps a marker
   // bubble with a button to re-open it.
   seoMarker?: boolean;
+  // §03: a one-time card shown in the chat flow when an image is uploaded (the
+  // image itself is placed into the draft/preview, not kept as a floating strip).
+  upload?: ChatImage;
   // §02: the "これでいいですか？" checklist card shown before drafting (OK/直したい)
   confirm?: ConfirmData;
 };
@@ -1153,12 +1156,52 @@ function PreviewEmpty() {
   );
 }
 
+// Shown in the preview pane while the writer is composing the first draft, so the
+// user sees clear "AI is working" feedback (blinking badge + shimmer skeleton).
+function PreviewLoading() {
+  return (
+    <div className="preview">
+      <div className="preview-head">
+        <div className="preview-head-l">
+          <span className="preview-h-title">👁 ライブプレビュー</span>
+          <span className="preview-h-sub">AIの編集がリアルタイムで反映されます</span>
+        </div>
+        <div className="seg" aria-hidden="true">
+          <span className="seg-btn on">PC</span>
+          <span className="seg-btn">スマホ</span>
+        </div>
+      </div>
+      <div className="preview-scroll">
+        <div className="preview-loading">
+          <div className="pl-badge">
+            <span className="pl-spark">✦</span> AIが記事を作成しています…
+          </div>
+          <div className="pl-line w35 sk" />
+          <div className="pl-title sk" />
+          <div className="pl-block sk" />
+          <div className="pl-line w90 sk" />
+          <div className="pl-line w80 sk" />
+          <div className="pl-line w60 sk" />
+          <div className="pl-line w85 sk" />
+          <div className="pl-line w50 sk" />
+          <p className="pl-hint muted">
+            構成にそって本文を書いています。30秒ほどかかる場合があります。
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  // True while the writer (propose_blog_post) is composing — drives the preview
+  // "作成中" loader so the user isn't staring at an empty pane.
+  const [drafting, setDrafting] = useState(false);
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [convId, setConvId] = useState("");
   const [blogs, setBlogs] = useState<Blog[]>([]);
@@ -1423,6 +1466,7 @@ export default function Page() {
         setStreaming("");
         setStatus(null);
         setBusy(false);
+        setDrafting(false); // safety: clear if the writer errored before a draft
         if (confirm && !imageAsked) {
           // Content is gathered. Insert the image step BEFORE the recap: hold the
           // recap and show 「画像を追加しますか？」 first (gather → 画像 → recap).
@@ -1460,6 +1504,7 @@ export default function Page() {
     setMessages((m) => [...m, { role: "user", text }]);
     reachStep(1); // 内容を伝える — stays here through the whole Q&A gathering
     setBusy(true);
+    setDrafting(false);
     setStatus("考えています");
     setStreaming("");
     targetRef.current = "";
@@ -1497,6 +1542,7 @@ export default function Page() {
             // No step change: the assistant replying is still 内容を伝える (1).
           } else if (evt.type === "tool") {
             setStatus(toolLabel(evt.name));
+            if (evt.name === "propose_blog_post") setDrafting(true);
           } else if (evt.type === "step") {
             // Backend tool→step hints are ignored: the step bar is driven by the
             // real client-side milestones below (confirm card, draft, seo, publish).
@@ -1506,6 +1552,7 @@ export default function Page() {
             // small marker in the chat so the conversation reads naturally, and
             // auto-switch the mobile view to the preview so the user sees it.
             setDraft(evt.draft);
+            setDrafting(false);
             setPublishConfirming(false);
             setMobileView("preview");
             setMessages((m) => [
@@ -1513,9 +1560,10 @@ export default function Page() {
               { role: "assistant", text: "", draftMarker: true },
             ]);
             setStatus(null);
-            // Draft written → content (1) + AI要約・確認 (3) done; now プレビュー (5).
-            markDone(1, 3);
-            reachStep(5);
+            // Draft written → 内容(1)・画像(2)・AI要約(3) done; SEOチェック(4) is next
+            // (the canned options offer it). Don't jump to プレビュー(5) yet.
+            markDone(1, 2, 3);
+            reachStep(4);
           } else if (evt.type === "seo") {
             // Open the dedicated SEO screen; pre-select the top 2 keyword
             // candidates (matches the mockup's "2つ選択中"). Drop a chat marker.
@@ -1567,8 +1615,12 @@ export default function Page() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "image";
-      setChatImages((imgs) => [...imgs, { url: data.url, alt, name: file.name, size: file.size }]);
-      markDone(2); // 画像をアップ (resolution is explicit via the proceed button)
+      const img = { url: data.url, alt, name: file.name, size: file.size };
+      setChatImages((imgs) => [...imgs, img]);
+      // One-time card in the conversation flow; the image itself is placed into
+      // the draft/preview (vision), not kept as a floating strip above the input.
+      setMessages((m) => [...m, { role: "user", text: "", upload: img }]);
+      markDone(2); // 画像をアップ
     } catch {
       // surfaced inline elsewhere; keep the composer quiet on failure
     } finally {
@@ -1576,8 +1628,6 @@ export default function Page() {
     }
   }
 
-  const removeChatImage = (i: number) =>
-    setChatImages((imgs) => imgs.filter((_, j) => j !== i));
 
   const toggleSeoKw = (term: string) =>
     setSeoKw((k) => (k.includes(term) ? k.filter((t) => t !== term) : [...k, term]));
@@ -1827,6 +1877,18 @@ export default function Page() {
                       <div className="who">アシスタント</div>
                     )}
                   {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
+                  {m.upload && (
+                    <div className="upload-card inflow">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={m.upload.url} alt={m.upload.alt} />
+                      <div className="upload-meta">
+                        <div className="upload-name">{m.upload.name}</div>
+                        <div className="upload-size">
+                          画像を追加しました{draft ? "・プレビューに配置" : ""}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {m.draftMarker && (
                     <button className="draft-chip" onClick={() => setMobileView("preview")}>
                       ✦ 下書きを作成しました。右の「ライブプレビュー」でご確認ください。
@@ -1895,28 +1957,6 @@ export default function Page() {
                       {chatImages.length > 0 ? "この画像で進む" : "画像なしで進む"}
                     </button>
                   </div>
-                </div>
-              )}
-
-              {chatImages.length > 0 && (
-                <div className="chat-uploads">
-                  {chatImages.map((im, i) => (
-                    <div className="upload-card" key={i}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={im.url} alt={im.alt} />
-                      <div className="upload-meta">
-                        <div className="upload-name">{im.name}</div>
-                        <div className="upload-size">JPG · {(im.size / 1048576).toFixed(1)} MB</div>
-                      </div>
-                      <button
-                        className="upload-x"
-                        onClick={() => removeChatImage(i)}
-                        aria-label="画像を削除"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
 
@@ -2005,6 +2045,8 @@ export default function Page() {
               onStep={onPreviewStep}
               onPublished={loadBlogs}
             />
+          ) : drafting ? (
+            <PreviewLoading />
           ) : (
             <PreviewEmpty />
           )}
