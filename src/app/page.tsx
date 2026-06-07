@@ -196,8 +196,20 @@ function PoweredBy({ className = "" }: { className?: string }) {
   );
 }
 
-// ── 8-step progress bar (matches the design proposal's 投稿フロー) ──────────
-const STEPS = ["内容", "方向性", "構成", "下書き", "画像", "SEO", "確認", "公開"];
+// ── 8-step progress pill row (top of the workspace) ─────────────────────────
+// Pattern A from the proposal (上部ピル列): a single compact row. Completed steps
+// show a check, the current step is a filled dark pill, upcoming steps a faint
+// number. See .steps / .step in globals.css.
+const STEPS = [
+  "内容を伝える",
+  "画像をアップ",
+  "AI要約・確認",
+  "SEOチェック",
+  "プレビュー",
+  "タイトル設定",
+  "スケジュール",
+  "公開",
+];
 
 function StepBar({ current }: { current: number }) {
   return (
@@ -206,8 +218,28 @@ function StepBar({ current }: { current: number }) {
         const n = i + 1;
         const state = n < current ? "done" : n === current ? "active" : "todo";
         return (
-          <div key={n} className={`step ${state}`} role="listitem">
-            <span className="step-n">{n < current ? "✓" : String(n).padStart(2, "0")}</span>
+          <div
+            key={n}
+            className={`step ${state}`}
+            role="listitem"
+            aria-current={n === current ? "step" : undefined}
+          >
+            <span className="step-n" aria-hidden="true">
+              {state === "done" ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 12l4.5 4.5L19 6" />
+                </svg>
+              ) : (
+                String(n).padStart(2, "0")
+              )}
+            </span>
             <span className="step-label">{label}</span>
           </div>
         );
@@ -545,7 +577,30 @@ function DraftCard({
             </>
           ) : (
             <div className="pub-confirm">
-              <span>公開すると右の一覧と公開サイトに表示されます。よろしいですか？</span>
+              <div className="pub-confirm-q">本当に公開しますか？</div>
+              <dl className="pub-summary">
+                <div>
+                  <dt>タイトル</dt>
+                  <dd>{draft.title}</dd>
+                </div>
+                <div>
+                  <dt>カテゴリ</dt>
+                  <dd>{draft.category}</dd>
+                </div>
+                <div>
+                  <dt>公開日時</dt>
+                  <dd>今すぐ公開（即時）</dd>
+                </div>
+                {imageCount > 0 && (
+                  <div>
+                    <dt>画像</dt>
+                    <dd>{imageCount} 枚</dd>
+                  </div>
+                )}
+              </dl>
+              <p className="pub-confirm-note">
+                公開すると右の一覧と公開サイトにすぐ表示されます。
+              </p>
               <div className="pub-confirm-btns">
                 <button className="pub-btn" onClick={doPublish} disabled={publishing}>
                   {publishing ? "公開中…" : "公開する"}

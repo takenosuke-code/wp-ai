@@ -12,19 +12,22 @@
   --ink-faint: #9b968c;
   --line: #e7e4dc;
   --line-soft: #efece5;
-  --accent: #c8463a;
-  --accent-ink: #a8392f;
-  --accent-wash: #fbeeec;
-  /* indigo "AI/SEO" accent (the proposal's Loop紫) — used for the step bar + SEO */
+  /* Restrained 4-color system (design proposal §06): 白 / 温白 / 藍 / AI紫 only.
+     藍 (indigo) is the primary brand accent; AI紫 (purple) marks AI/SEO/steps.
+     No red/green/orange — status is shown by symbols (✓ △ ＋), not hue. */
+  --accent: #3a3f9e; /* 藍 indigo */
+  --accent-ink: #2c2f7d;
+  --accent-wash: #edeef8;
+  /* AI紫 accent — used for the step bar + SEO + AI moments */
   --ai: #4f46e5;
   --ai-ink: #4338ca;
   --ai-wash: #eef0fe;
-  --ok: #3f9b6d;
-  --warn: #c98a2b;
+  --ok: var(--accent); /* 達成 — 藍 */
+  --warn: #8a867d; /* 要改善 — neutral warm gray (caution shown via △) */
   --user-bubble: #ece9e1;
   --shadow: 0 1px 2px rgba(26, 25, 23, 0.04), 0 8px 24px rgba(26, 25, 23, 0.05);
   --font-sans: "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Shippori Mincho B1", "Noto Serif JP", serif;
+  --font-serif: "Noto Serif JP", serif;
   --radius: 14px;
 }
 
@@ -197,12 +200,33 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand .mark {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-wash);
+/* Loop logo badge — colors sampled from the client's PDF
+   (indigo gradient #383C9D top-left → #6D60D4 bottom-right, white serif "L") */
+.mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3a3d9e 0%, #544cc8 52%, #6d60d4 100%);
+  box-shadow:
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.35),
+    inset 0 -2px 4px rgba(40, 36, 110, 0.4),
+    0 2px 6px rgba(64, 56, 166, 0.35);
+}
+.mark::after {
+  content: "L";
+  /* the Loop "L" is a Didone-style italic (per the logo art); Noto Serif JP has
+     no true Latin italic, so use a real-italic Latin serif for the mark only. */
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1;
+  color: #fff;
+  transform: translateY(0.5px);
 }
 
 .brand .name {
@@ -944,79 +968,73 @@ body {
 /* ── 8-step progress bar (top of chat column) ──────────────────────────── */
 .steps {
   display: flex;
-  align-items: stretch;
-  gap: 6px;
-  padding: 11px 20px;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   overflow-x: auto;
 }
 .step {
-  display: flex;
+  flex: none;
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 6px 4px 6px 0;
-  position: relative;
+  padding: 6px 11px;
+  border-radius: 999px;
   white-space: nowrap;
-}
-.step:not(:last-child)::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  min-width: 8px;
-  background: var(--line);
-  margin-left: 4px;
+  color: var(--ink-faint);
+  transition: background 0.2s ease, color 0.2s ease;
 }
 .step-n {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-size: 10.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 17px;
+  font-family: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  font-size: 11.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: var(--ink-faint);
-  background: var(--line-soft);
-  border: 1px solid var(--line);
-  transition: all 0.2s ease;
-}
-.step-label {
-  font-size: 11.5px;
-  color: var(--ink-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: color 0.2s ease;
 }
-.step.done .step-n {
-  background: var(--ai);
-  border-color: var(--ai);
-  color: #fff;
+.step-n svg {
+  width: 14px;
+  height: 14px;
 }
-.step.done .step-label {
+.step-label {
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+/* completed step: check + slightly darker label */
+.step.done {
   color: var(--ink-soft);
 }
+.step.done .step-n {
+  color: var(--ink-soft);
+}
+/* current step: filled dark pill */
+.step.active {
+  background: var(--ink);
+}
 .step.active .step-n {
-  background: var(--ai-wash);
-  border-color: var(--ai);
-  color: var(--ai-ink);
-  box-shadow: 0 0 0 3px var(--ai-wash);
+  color: rgba(255, 255, 255, 0.7);
 }
 .step.active .step-label {
-  color: var(--ai-ink);
+  color: #fff;
   font-weight: 700;
 }
 
 @media (max-width: 720px) {
-  .step-label {
-    display: none;
-  }
   .step {
-    flex: none;
+    padding: 6px 9px;
+    gap: 6px;
+  }
+  .step-label {
+    font-size: 12px;
   }
 }
 
@@ -1103,13 +1121,13 @@ body {
   font-weight: 700;
 }
 .comp.hi {
-  color: var(--accent);
+  color: var(--ai); /* 高: AI紫 (stands out) */
 }
 .comp.mid {
-  color: var(--warn);
+  color: var(--warn); /* 中: neutral gray */
 }
 .comp.lo {
-  color: var(--ok);
+  color: var(--accent); /* 低: 藍 */
 }
 .seo-checks,
 .seo-kw,
@@ -1356,20 +1374,54 @@ body {
 .pub-confirm {
   width: 100%;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
-  flex-wrap: wrap;
   font-size: 13px;
   color: var(--ink-soft);
   background: var(--ai-wash);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border: 1px solid var(--ai);
+  border-radius: 12px;
+  padding: 16px;
+}
+.pub-confirm-q {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ai-ink);
+}
+.pub-summary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pub-summary > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.pub-summary dt {
+  flex: none;
+  width: 72px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+.pub-summary dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pub-confirm-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 .pub-confirm-btns {
   display: flex;
   gap: 8px;
   flex: none;
+  justify-content: flex-end;
 }
 .pub-cancel {
   font: inherit;
@@ -1530,8 +1582,8 @@ body {
     align-items: center;
   }
   .steps {
-    padding: 9px 12px;
-    gap: 4px;
+    padding: 8px 12px;
+    gap: 2px;
   }
   .thread {
     padding: 18px 14px 28px;
