@@ -31,6 +31,8 @@ type SeoReport = {
   competitors: SeoCompetitor[];
   recommendation: string;
 };
+type ConfirmItem = { label: string; value: string };
+type ConfirmData = { items: ConfirmItem[] };
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
@@ -39,6 +41,8 @@ type ChatMsg = {
   // pane); we drop a lightweight marker bubble in the chat instead.
   draftMarker?: boolean;
   seo?: SeoReport;
+  // §02: the "これでいいですか？" checklist card shown before drafting (OK/直したい)
+  confirm?: ConfirmData;
 };
 type ConvSummary = { id: string; title: string; updatedAt: string };
 type Blog = {
@@ -56,6 +60,8 @@ type Blog = {
 
 const OPT_OPEN = "[[OPTIONS]]";
 const OPT_CLOSE = "[[/OPTIONS]]";
+const CONF_OPEN = "[[CONFIRM]]";
+const CONF_CLOSE = "[[/CONFIRM]]";
 const CONV_KEY = "wpai.conv";
 
 function toolLabel(name: string): string {
@@ -80,13 +86,110 @@ function parseOptions(full: string): { body: string; options: string[] } {
   return { body, options };
 }
 
-function displayBody(s: string): string {
-  const idx = s.indexOf(OPT_OPEN);
-  if (idx !== -1) return s.slice(0, idx).trimEnd();
-  for (let n = Math.min(OPT_OPEN.length - 1, s.length); n > 0; n--) {
-    if (s.endsWith(OPT_OPEN.slice(0, n))) return s.slice(0, s.length - n).trimEnd();
+// Where in `s` to cut a (possibly still-streaming) marker block: the token's
+// position if present, else the length of any partial token suffix at the end.
+function cutAt(s: string, tok: string): number {
+  const idx = s.indexOf(tok);
+  if (idx !== -1) return idx;
+  for (let n = Math.min(tok.length - 1, s.length); n > 0; n--) {
+    if (s.endsWith(tok.slice(0, n))) return s.length - n;
   }
-  return s;
+  return s.length;
+}
+
+function displayBody(s: string): string {
+  const cut = Math.min(cutAt(s, OPT_OPEN), cutAt(s, CONF_OPEN));
+  return s.slice(0, cut).trimEnd();
+}
+
+// §02: extract a [[CONFIRM]] checklist block (lines of "ラベル: 値") from the text.
+function parseConfirm(full: string): { rest: string; confirm?: ConfirmData } {
+  const open = full.indexOf(CONF_OPEN);
+  if (open === -1) return { rest: full };
+  const before = full.slice(0, open);
+  const afterOpen = full.slice(open + CONF_OPEN.length);
+  const close = afterOpen.indexOf(CONF_CLOSE);
+  const inner = close === -1 ? afterOpen : afterOpen.slice(0, close);
+  const after = close === -1 ? "" : afterOpen.slice(close + CONF_CLOSE.length);
+  const items: ConfirmItem[] = inner
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\s\-*・]+/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^(.+?)\s*[:：]\s*(.+)$/);
+      return m ? { label: m[1].trim(), value: m[2].trim() } : { label: "", value: line };
+    });
+  return {
+    rest: `${before} ${after}`.trim(),
+    confirm: items.length ? { items } : undefined,
+  };
+}
+
+// Combined parse for a finished assistant message: confirm card + options + body.
+function parseAssistant(full: string): {
+  body: string;
+  options: string[];
+  confirm?: ConfirmData;
+} {
+  const { rest, confirm } = parseConfirm(full);
+  const { body, options } = parseOptions(rest);
+  return { body, options, confirm };
+}
+
+// §02: "AIが「これでいいですか？」と必ず止まる" — a colored checklist card the
+// assistant shows before drafting. The user confirms with OK or 直したい (2択).
+function ConfirmCard({
+  data,
+  disabled,
+  onChoice,
+}: {
+  data: ConfirmData;
+  disabled: boolean;
+  onChoice: (value: string) => void;
+}) {
+  return (
+    <div className="confirm">
+      <div className="confirm-h">この内容で進めてよろしいですか？</div>
+      <ul className="confirm-list">
+        {data.items.map((it, i) => (
+          <li key={i} className="confirm-item">
+            <span className="confirm-check" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12l4.5 4.5L19 6" />
+              </svg>
+            </span>
+            <span className="confirm-t">
+              {it.label && <span className="confirm-label">{it.label}</span>}
+              <span className="confirm-val">{it.value}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="confirm-btns">
+        <button
+          className="confirm-ok"
+          disabled={disabled}
+          onClick={() => onChoice("OK、この内容で進めてください。")}
+        >
+          OK、これで進める
+        </button>
+        <button
+          className="confirm-edit"
+          disabled={disabled}
+          onClick={() => onChoice("直したいところがあります。")}
+        >
+          直したい
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function renderMarkdown(md: string): string {
@@ -820,8 +923,8 @@ export default function Page() {
       const data = await res.json();
       const msgs: ChatMsg[] = (data.messages as { role: string; text: string }[]).map((m) => {
         if (m.role === "assistant") {
-          const { body, options } = parseOptions(m.text);
-          return { role: "assistant", text: body, options };
+          const { body, options, confirm } = parseAssistant(m.text);
+          return { role: "assistant", text: body, options, confirm };
         }
         return { role: "user", text: m.text };
       });
@@ -893,12 +996,12 @@ export default function Page() {
         setStreaming(displayBody(target.slice(0, shownRef.current)));
       }
       if (doneRef.current && shownRef.current >= target.length) {
-        const { body, options } = parseOptions(targetRef.current);
+        const { body, options, confirm } = parseAssistant(targetRef.current);
         setStreaming("");
         setStatus(null);
         setBusy(false);
-        if (body || options.length) {
-          setMessages((m) => [...m, { role: "assistant", text: body, options }]);
+        if (body || options.length || confirm) {
+          setMessages((m) => [...m, { role: "assistant", text: body, options, confirm }]);
         }
         loadConversations(); // refresh sidebar (title / order)
         rafRef.current = null;
@@ -1211,6 +1314,13 @@ export default function Page() {
                     <button className="draft-chip" onClick={() => setMobileView("preview")}>
                       ✦ 下書きを作成しました。右の「ライブプレビュー」でご確認ください。
                     </button>
+                  )}
+                  {m.confirm && (
+                    <ConfirmCard
+                      data={m.confirm}
+                      disabled={busy || i !== messages.length - 1}
+                      onChoice={(v) => send(v)}
+                    />
                   )}
                   {m.seo && <SeoCard report={m.seo} />}
                 </div>

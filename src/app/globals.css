@@ -2082,3 +2082,102 @@ body {
     font-size: 22px;
   }
 }
+
+/* ── §02 confirmation checklist card (これでいいですか？ → OK / 直したい) ──── */
+.confirm {
+  margin-top: 8px;
+  max-width: 460px;
+  background: var(--ai-wash);
+  border: 1px solid var(--ai);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.confirm-h {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ai-ink);
+  margin-bottom: 12px;
+}
+.confirm-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.confirm-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.confirm-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ai);
+  color: #fff;
+}
+.confirm-check svg {
+  width: 12px;
+  height: 12px;
+}
+.confirm-t {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.confirm-label {
+  color: var(--ink-faint);
+  font-size: 12px;
+  min-width: 60px;
+}
+.confirm-val {
+  color: var(--ink);
+  font-weight: 500;
+}
+.confirm-btns {
+  display: flex;
+  gap: 8px;
+}
+.confirm-ok {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.confirm-ok:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.confirm-edit {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.confirm-edit:hover:not(:disabled) {
+  border-color: var(--ink-faint);
+}
+.confirm-ok:disabled,
+.confirm-edit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
