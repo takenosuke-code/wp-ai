@@ -51,21 +51,192 @@ body {
   background: var(--accent-wash);
 }
 
-/* ---------- Layout ---------- */
+/* ---------- Layout ----------
+   Whole workspace = THREE stacked regions: (A) top header bar, (B) full-width
+   step pill row, (C) two-column body (chat | live preview). The history sidebar
+   sits inside the body row on the far left; the published panel is an off-canvas
+   drawer on all widths. */
 
 .app {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 380px;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  min-height: 0;
 }
 
+/* Region C: the two-column body fills the remaining height. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1.05fr) minmax(0, 1fr);
+}
+
+/* Medium: hide the history column (it becomes the ☰ drawer) so the chat +
+   live-preview two-column split — the mockup's main body — gets full room. */
 @media (max-width: 1100px) {
-  .app {
-    grid-template-columns: 230px minmax(0, 1fr);
+  .body {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   }
-  .panel {
-    display: none;
+  .side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 84vw;
+    max-width: 330px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+    box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
   }
+  .side.open {
+    transform: translateX(0);
+  }
+  /* surface the ☰ history toggle in the header below 1100 */
+  .topbar .brand-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+  }
+}
+
+/* ---------- Region A: top header bar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.topbar-l {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.topbar-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex: none;
+}
+.topbar-div {
+  color: var(--line);
+  font-size: 18px;
+  flex: none;
+}
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-faint);
+}
+.crumb-folder {
+  display: inline-flex;
+  color: var(--ink-faint);
+  flex: none;
+}
+.crumb-seg {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  flex: none;
+}
+.crumb-chev {
+  color: var(--ink-faint);
+  flex: none;
+}
+.crumb-title {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  min-width: 0;
+}
+.topbar-r {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.autosave-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.ghost-btn:hover {
+  border-color: var(--ink-faint);
+  background: var(--line-soft);
+}
+.primary-btn {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+.primary-btn:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.primary-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.primary-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.brand-panel-count {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* ---------- Conversations sidebar ---------- */
@@ -185,12 +356,80 @@ body {
   min-width: 0;
 }
 
-.panel {
-  border-left: 1px solid var(--line);
+/* LEFT body column: chat */
+.chat-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+}
+.chat-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
+  flex: none;
+}
+.chat-col-head-l {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.chat-col-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ai-ink);
+  white-space: nowrap;
+}
+.chat-col-sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.chat-col-day {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  flex: none;
 }
 
-/* ---------- Header ---------- */
+/* RIGHT body column: live preview */
+.preview-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--paper);
+}
+
+/* the published-articles list is an off-canvas drawer on all widths now */
+.panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 84vw;
+  max-width: 380px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  transform: translateX(100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+}
+.panel.open {
+  transform: translateX(0);
+}
+
+/* ---------- Header (legacy .brand kept for the login screen mark) ---------- */
 
 .brand {
   display: flex;
@@ -831,6 +1070,224 @@ body {
   margin-top: 18px;
 }
 
+/* ── Chat: draft-ready marker chip in the stream ───────────────────────── */
+.draft-chip {
+  margin-top: 4px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border: 1px solid var(--ai);
+  border-radius: 4px 14px 14px 14px;
+  padding: 12px 15px;
+  line-height: 1.7;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.draft-chip:hover {
+  background: #e6e9fe;
+}
+
+/* ── Region C right column: the live preview pane ───────────────────────── */
+.preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: none;
+}
+.preview-head-l {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.preview-h-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.preview-h-sub {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+/* PC / スマホ segmented toggle */
+.seg {
+  display: inline-flex;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  flex: none;
+}
+.seg-btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.seg-btn.on {
+  background: var(--surface);
+  color: var(--ai-ink);
+  box-shadow: 0 1px 2px rgba(26, 25, 23, 0.1);
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 22px 30px;
+}
+/* the rendered article surface; narrows to a phone width in スマホ mode */
+.preview-surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 30px 34px 36px;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 760px;
+  transition: max-width 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.preview-surface.is-mobile {
+  max-width: 390px;
+  padding: 22px 20px 28px;
+}
+.ai-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 999px;
+  padding: 4px 11px;
+  margin-bottom: 14px;
+}
+.preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+.cat-chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 6px;
+  padding: 3px 11px;
+}
+.tag-chip {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--line-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.preview-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+.is-mobile .preview-title {
+  font-size: 22px;
+}
+.preview-byline {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.preview-hero {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin: 20px 0 4px;
+  display: block;
+}
+.preview-hero-empty {
+  margin: 20px 0 4px;
+  padding: 26px 18px;
+  text-align: center;
+  background: var(--accent-wash);
+  border: 1px dashed var(--accent);
+  border-radius: 12px;
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.preview .prose {
+  margin-top: 18px;
+}
+
+/* empty state before any draft exists */
+.preview-blank {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  color: var(--ink-soft);
+  padding: 40px 24px;
+}
+.preview-blank-glyph {
+  font-size: 38px;
+  opacity: 0.4;
+  margin-bottom: 6px;
+}
+.preview-blank p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  max-width: 320px;
+}
+.preview-blank .muted {
+  font-size: 12.5px;
+}
+
+/* the publish bar pinned at the bottom of the preview pane */
+.preview .pubbar {
+  flex: none;
+  margin: 0;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* mobile-only "back to chat" affordance in the preview column */
+.preview-back {
+  display: none;
+}
+
 /* ── Auth (login gate) ─────────────────────────────────────────────── */
 .auth-screen {
   min-height: 100vh;
@@ -969,11 +1426,14 @@ body {
 .steps {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   padding: 9px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  overflow-x: auto;
+  flex: none;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .step {
   flex: none;
@@ -1464,9 +1924,6 @@ body {
 .mobile-only {
   display: none;
 }
-.drawer-backdrop {
-  display: none;
-}
 .icon-btn {
   font: inherit;
   border: 1px solid var(--line);
@@ -1478,13 +1935,29 @@ body {
 .icon-btn:active {
   transform: scale(0.96);
 }
+.panel-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
-@media (max-width: 640px) {
-  /* chat fills the screen; .side and .panel are taken out of flow below */
-  .app {
-    grid-template-columns: 1fr;
-  }
+/* The drawer backdrop is shown whenever a drawer is open (any breakpoint). */
+.drawer-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 25, 23, 0.34);
+  backdrop-filter: blur(2px);
+  z-index: 35;
+  animation: fade 0.2s ease both;
+}
 
+/* ── Phone: the two body columns stack into one swappable view ──────────── */
+@media (max-width: 720px) {
   .mobile-only {
     display: inline-flex;
     align-items: center;
@@ -1501,19 +1974,6 @@ body {
     width: 34px;
     padding: 0;
   }
-  .brand-panel {
-    margin-left: auto;
-    font-size: 12.5px;
-  }
-  .brand-panel-count {
-    background: var(--accent-wash);
-    color: var(--accent-ink);
-    border-radius: 999px;
-    padding: 1px 7px;
-    margin-left: 6px;
-    font-size: 11px;
-    font-weight: 700;
-  }
   .panel-close {
     width: 32px;
     height: 32px;
@@ -1521,68 +1981,67 @@ body {
     margin-left: auto;
   }
 
-  /* off-canvas drawers */
-  .side,
-  .panel {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 84vw;
-    max-width: 330px;
-    z-index: 40;
-    transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
-    box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+  /* header tightens; drop the autosave + breadcrumb tail to fit */
+  .topbar {
+    padding: 10px 12px;
+    gap: 8px;
   }
-  .side {
-    left: 0;
-    transform: translateX(-100%);
+  .topbar-name {
+    font-size: 14px;
   }
-  .side.open {
-    transform: translateX(0);
+  .topbar-div,
+  .crumb,
+  .autosave,
+  .topbar-published {
+    display: none;
   }
-  .panel {
-    display: flex; /* re-enable: the ≤1100 rule sets display:none */
-    right: 0;
-    left: auto;
-    transform: translateX(100%);
-    border-left: 1px solid var(--line);
+  .topbar-r {
+    gap: 8px;
   }
-  .panel.open {
-    transform: translateX(0);
+  .ghost-btn,
+  .primary-btn {
+    padding: 8px 11px;
+    font-size: 12.5px;
   }
 
-  .drawer-backdrop {
+  /* the two columns become a single full-width swappable view */
+  .body {
     display: block;
-    position: fixed;
+    position: relative;
+  }
+  .chat-col,
+  .preview-col {
+    position: absolute;
     inset: 0;
-    background: rgba(26, 25, 23, 0.34);
-    backdrop-filter: blur(2px);
-    z-index: 35;
-    animation: fade 0.2s ease both;
+    border-right: none;
+  }
+  .body.view-chat .preview-col {
+    display: none;
+  }
+  .body.view-preview .chat-col {
+    display: none;
+  }
+  .preview-back {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    margin: 10px 0 0 14px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    background: transparent;
+    border: none;
+    cursor: pointer;
   }
 
-  /* tighten the chat chrome for narrow screens */
-  .brand {
-    padding: 12px 14px;
-    gap: 10px;
-  }
-  /* let the title truncate rather than push the panel button off-screen */
-  .brand .name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .brand-menu,
-  .brand-panel {
-    flex: none;
+  .panel {
+    width: 88vw;
   }
   .panel-head {
     align-items: center;
   }
   .steps {
-    padding: 8px 12px;
+    padding: 8px 10px;
     gap: 2px;
   }
   .thread {
@@ -1594,6 +2053,12 @@ body {
   }
   .bubble {
     max-width: 100%;
+  }
+  .preview-scroll {
+    padding: 16px 12px 22px;
+  }
+  .preview-surface {
+    padding: 22px 18px 26px;
   }
   .draft,
   .seo {

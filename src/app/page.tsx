@@ -35,7 +35,9 @@ type ChatMsg = {
   role: "user" | "assistant";
   text: string;
   options?: string[];
-  draft?: DraftPreview;
+  // A draft no longer renders in the chat stream (it lives in the right preview
+  // pane); we drop a lightweight marker bubble in the chat instead.
+  draftMarker?: boolean;
   seo?: SeoReport;
 };
 type ConvSummary = { id: string; title: string; updatedAt: string };
@@ -398,12 +400,26 @@ function splitSections(md: string): string[] {
   return segs.length ? segs : [md];
 }
 
-function DraftCard({
+// ── Live preview pane (region C, right column) ───────────────────────────────
+// Renders the CURRENT draft as the "公開後の見た目": category + tags + serif
+// title + byline + body, with per-section image "+" slots. Holds the image
+// upload + publish/confirm logic (unchanged from the old in-chat DraftCard); the
+// confirm flow is lifted to page state so the top-header "公開する →" button can
+// trigger the SAME flow. A PC / スマホ toggle narrows the surface to phone width.
+type PreviewMode = "pc" | "mobile";
+
+function PreviewPane({
   draft,
+  aiUpdating,
+  confirming,
+  setConfirming,
   onStep,
   onPublished,
 }: {
   draft: DraftPreview;
+  aiUpdating: boolean;
+  confirming: boolean;
+  setConfirming: (v: boolean) => void;
   onStep: (n: number) => void;
   onPublished: () => void;
 }) {
@@ -411,11 +427,19 @@ function DraftCard({
   const [slots, setSlots] = useState<SlotImage[][]>(() => sections.map(() => []));
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<PreviewMode>("pc");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Re-init slots when the draft body changes (a revision arrives).
+  useEffect(() => {
+    setSlots(sections.map(() => []));
+    setPublished(false);
+    setError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.content]);
 
   function pick(slotIdx: number) {
     if (uploading || published) return;
@@ -500,64 +524,114 @@ function DraftCard({
   }
 
   const imageCount = slots.reduce((n, arr) => n + arr.length, 0);
+  // First placed image (if any) acts as the hero/featured image area.
+  const heroUrl = slots.find((arr) => arr.length)?.[0]?.url;
+  const readMins = Math.max(1, Math.round(draft.content.replace(/\s/g, "").length / 500));
 
   return (
-    <div className="draft">
+    <div className="preview">
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
-      <div className="draft-tag">{published ? "公開済み ✓" : "下書きプレビュー（未公開）"}</div>
-      <div className="draft-meta">
-        {draft.category} · /{draft.slug}
-      </div>
-      <h1 className="draft-title">{draft.title}</h1>
-      <div className="draft-eyecatch">アイキャッチ案: {draft.featuredImagePrompt}</div>
-      {draft.tags?.length > 0 && (
-        <div className="chips" style={{ margin: "10px 0" }}>
-          {draft.tags.map((t) => (
-            <span key={t} className="chip">
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
 
-      {sections.map((sec, i) => (
-        <div key={i}>
-          <div className="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(sec) }} />
-          <div className="imgslot">
-            {slots[i].map((im, j) => (
-              <div key={j} className="thumb">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={im.url} alt={im.alt} />
+      {/* pane header: title + realtime note + PC/スマホ toggle */}
+      <div className="preview-head">
+        <div className="preview-head-l">
+          <span className="preview-h-title">👁 ライブプレビュー</span>
+          <span className="preview-h-sub">AIの編集がリアルタイムで反映されます</span>
+        </div>
+        <div className="seg" role="tablist" aria-label="表示幅">
+          <button
+            role="tab"
+            aria-selected={mode === "pc"}
+            className={`seg-btn ${mode === "pc" ? "on" : ""}`}
+            onClick={() => setMode("pc")}
+          >
+            PC
+          </button>
+          <button
+            role="tab"
+            aria-selected={mode === "mobile"}
+            className={`seg-btn ${mode === "mobile" ? "on" : ""}`}
+            onClick={() => setMode("mobile")}
+          >
+            スマホ
+          </button>
+        </div>
+      </div>
+
+      <div className="preview-scroll">
+        <div className={`preview-surface ${mode === "mobile" ? "is-mobile" : ""}`}>
+          {aiUpdating && (
+            <div className="ai-updating">✦ AIが下書きを更新中…</div>
+          )}
+
+          {/* category + tag chips */}
+          <div className="preview-chips">
+            {draft.category && <span className="cat-chip">{draft.category}</span>}
+            {draft.tags?.map((t) => (
+              <span key={t} className="tag-chip">
+                # {t}
+              </span>
+            ))}
+          </div>
+
+          <h1 className="preview-title">{draft.title}</h1>
+
+          <div className="preview-byline">
+            Loop編集部 / 山田 真理子 ・ 約{readMins}分 ・ 公開予定
+          </div>
+
+          {/* featured image area */}
+          {heroUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="preview-hero" src={heroUrl} alt={draft.title} />
+          ) : (
+            <div className="preview-hero-empty">
+              アイキャッチ案: {draft.featuredImagePrompt}
+            </div>
+          )}
+
+          {/* body with per-section "+" image slots */}
+          {sections.map((sec, i) => (
+            <div key={i}>
+              <div className="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(sec) }} />
+              <div className="imgslot">
+                {slots[i].map((im, j) => (
+                  <div key={j} className="thumb">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={im.url} alt={im.alt} />
+                    {!published && (
+                      <button className="thumb-x" onClick={() => removeImg(i, j)} aria-label="画像を削除">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
                 {!published && (
-                  <button className="thumb-x" onClick={() => removeImg(i, j)} aria-label="画像を削除">
-                    ✕
+                  <button
+                    className="add-img"
+                    onClick={() => pick(i)}
+                    disabled={uploading}
+                    title="このセクションに画像を追加"
+                  >
+                    {uploading && activeSlot === i ? (
+                      <span className="add-spin" />
+                    ) : (
+                      <>
+                        <span className="add-plus">＋</span>
+                        画像を追加
+                      </>
+                    )}
                   </button>
                 )}
               </div>
-            ))}
-            {!published && (
-              <button
-                className="add-img"
-                onClick={() => pick(i)}
-                disabled={uploading}
-                title="このセクションに画像を追加"
-              >
-                {uploading && activeSlot === i ? (
-                  <span className="add-spin" />
-                ) : (
-                  <>
-                    <span className="add-plus">＋</span>
-                    画像を追加
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+            </div>
+          ))}
+
+          {error && <div className="draft-error">{error}</div>}
         </div>
-      ))}
+      </div>
 
-      {error && <div className="draft-error">{error}</div>}
-
+      {/* publish bar pinned at the bottom of the pane */}
       {!published ? (
         <div className="pubbar">
           {!confirming ? (
@@ -621,6 +695,33 @@ function DraftCard({
   );
 }
 
+// Empty state shown in the right pane before any draft exists.
+function PreviewEmpty() {
+  return (
+    <div className="preview">
+      <div className="preview-head">
+        <div className="preview-head-l">
+          <span className="preview-h-title">👁 ライブプレビュー</span>
+          <span className="preview-h-sub">AIの編集がリアルタイムで反映されます</span>
+        </div>
+        <div className="seg" aria-hidden="true">
+          <span className="seg-btn on">PC</span>
+          <span className="seg-btn">スマホ</span>
+        </div>
+      </div>
+      <div className="preview-scroll">
+        <div className="preview-blank">
+          <div className="preview-blank-glyph">👁</div>
+          <p>ここに記事の「公開後の見た目」が表示されます。</p>
+          <p className="muted">
+            左のチャットでAIと内容を相談すると、下書きがここにリアルタイムで反映されます。
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -632,10 +733,18 @@ export default function Page() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [selected, setSelected] = useState<Blog | null>(null);
   const [step, setStep] = useState(1);
+  // The CURRENT draft, lifted to page state so it renders in the RIGHT live
+  // preview pane (region C) instead of inside the chat stream. The latest draft
+  // event wins (revisions replace it). `publishConfirming` is also lifted so the
+  // top-header "公開する →" button triggers the SAME confirm flow the pane owns.
+  const [draft, setDraft] = useState<DraftPreview | null>(null);
+  const [publishConfirming, setPublishConfirming] = useState(false);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
   const [sideOpen, setSideOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  // Mobile: which body column is shown (the two columns stack/swap on phones).
+  const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
 
   // The progress bar only moves forward within a conversation (revisions don't
   // regress it); it resets when a new/other conversation is opened.
@@ -702,6 +811,9 @@ export default function Page() {
     localStorage.setItem(CONV_KEY, id);
     setSelected(null);
     setStep(1);
+    setDraft(null);
+    setPublishConfirming(false);
+    setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
     if (res.ok) {
@@ -726,6 +838,9 @@ export default function Page() {
     setMessages([]);
     setInput("");
     setStep(1);
+    setDraft(null);
+    setPublishConfirming(false);
+    setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
   }
@@ -847,9 +962,17 @@ export default function Page() {
           } else if (evt.type === "step") {
             bumpStep(evt.step);
           } else if (evt.type === "draft") {
-            // The proposed (not-yet-published) post: show an interactive preview
-            // (image "+" slots + 公開する) so the user reviews/publishes it directly.
-            setMessages((m) => [...m, { role: "assistant", text: "", draft: evt.draft }]);
+            // The proposed (not-yet-published) post. It now lives in the RIGHT
+            // live-preview pane (region C), not the chat stream. We also drop a
+            // small marker in the chat so the conversation reads naturally, and
+            // auto-switch the mobile view to the preview so the user sees it.
+            setDraft(evt.draft);
+            setPublishConfirming(false);
+            setMobileView("preview");
+            setMessages((m) => [
+              ...m,
+              { role: "assistant", text: "", draftMarker: true },
+            ]);
             setStatus(null);
             bumpStep(5); // 画像: a draft now exists; images can be added
           } else if (evt.type === "seo") {
@@ -930,6 +1053,21 @@ export default function Page() {
     );
   }
 
+  // Truncated current-article title for the header breadcrumb.
+  const breadcrumbTitle = draft?.title || (busy ? "下書きを準備中…" : "新しい記事");
+  const autosaveTime = new Date().toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  // The header "公開する →" + the pane share one confirm flow: this opens it and
+  // (on mobile) brings the preview into view so the confirm is visible.
+  function startPublish() {
+    if (!draft) return;
+    setPublishConfirming(true);
+    setMobileView("preview");
+    bumpStep(7);
+  }
+
   return (
     <div className="app">
       {(sideOpen || panelOpen) && (
@@ -941,43 +1079,10 @@ export default function Page() {
           }}
         />
       )}
-      <div className={`side ${sideOpen ? "open" : ""}`}>
-        <div className="side-head">
-          <span className="side-title">チャット履歴</span>
-          <button className="new-btn" onClick={newChat}>
-            ＋ 新規
-          </button>
-        </div>
-        <div className="conv-list">
-          {conversations.length === 0 && (
-            <div className="empty center" style={{ fontSize: 13 }}>
-              履歴はまだありません
-            </div>
-          )}
-          {conversations.map((c) => (
-            <button
-              key={c.id}
-              className={`conv ${c.id === convId ? "active" : ""}`}
-              onClick={() => openConversation(c.id)}
-            >
-              <span className="conv-title">{c.title}</span>
-              <span className="conv-date">
-                {new Date(c.updatedAt).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
-              </span>
-              <span className="del" onClick={(e) => deleteConv(c.id, e)} title="削除">
-                ✕
-              </span>
-            </button>
-          ))}
-        </div>
-        <button className="logout-btn" onClick={doLogout}>
-          ログアウト
-        </button>
-        <PoweredBy className="side-powered" />
-      </div>
 
-      <div className="col">
-        <div className="brand">
+      {/* ── Region A: top header bar (full width) ─────────────────────────── */}
+      <header className="topbar">
+        <div className="topbar-l">
           <button
             className="mobile-only icon-btn brand-menu"
             onClick={() => setSideOpen(true)}
@@ -986,95 +1091,205 @@ export default function Page() {
             ☰
           </button>
           <span className="mark" />
-          <span className="name">ブログアシスタント</span>
+          <span className="topbar-name">Loop AI 投稿アシスタント</span>
+          <span className="topbar-div" aria-hidden="true">
+            │
+          </span>
+          <nav className="crumb" aria-label="パンくず">
+            <span className="crumb-folder" aria-hidden="true">
+              {/* folder glyph */}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+            </span>
+            <span className="crumb-seg">下書き</span>
+            <span className="crumb-chev" aria-hidden="true">
+              ›
+            </span>
+            <span className="crumb-title">{breadcrumbTitle}</span>
+          </nav>
+        </div>
+
+        <div className="topbar-r">
+          <span className="autosave">
+            <span className="autosave-dot" aria-hidden="true" />
+            自動保存済み・{autosaveTime}
+          </span>
           <button
-            className="mobile-only icon-btn brand-panel"
+            className="ghost-btn topbar-published"
             onClick={() => setPanelOpen(true)}
-            aria-label="公開済みを開く"
+            title="公開済みの記事一覧"
           >
             公開済み<span className="brand-panel-count">{blogs.length}</span>
           </button>
+          <button
+            className="ghost-btn"
+            onClick={() => setMobileView("preview")}
+            title="公開後の見た目を確認"
+          >
+            <span aria-hidden="true">👁</span> 公開後の見た目
+          </button>
+          <button
+            className="primary-btn"
+            onClick={startPublish}
+            disabled={!draft}
+            title={draft ? "この記事を公開" : "下書きができると公開できます"}
+          >
+            公開する →
+          </button>
         </div>
+      </header>
 
-        <StepBar current={step} />
+      {/* ── Region B: full-width 8-step pill row ──────────────────────────── */}
+      <StepBar current={step} />
 
-        <div className="messages" ref={scrollRef}>
-          <div className="thread">
-            {messages.length === 0 && !busy && (
-              <div className="empty">
-                <em>「リモート社員のオンボーディングについて記事を書きたい」</em>
-                のように話しかけてください。
-                <br />
-                まず記事の目的（集客・SEO・情報提供など）を確認し、構成を提案し、下書きを書き、承認後に右の一覧へ公開します。
-              </div>
-            )}
-
-            {messages.map((m, i) => (
-              <div key={i} className={`turn ${m.role}`}>
-                {m.role === "assistant" && (m.text || (!m.draft && !m.seo)) && (
-                  <div className="who">アシスタント</div>
-                )}
-                {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
-                {m.draft && (
-                  <DraftCard draft={m.draft} onStep={bumpStep} onPublished={loadBlogs} />
-                )}
-                {m.seo && <SeoCard report={m.seo} />}
-              </div>
-            ))}
-
-            {busy && (streaming || status) && (
-              <div className="turn assistant">
-                <div className="who">アシスタント</div>
-                {streaming ? (
-                  <div className="bubble assistant">
-                    {streaming}
-                    <span className="caret" />
-                  </div>
-                ) : (
-                  status && (
-                    <div className="status">
-                      <span className="pulse" />
-                      <span>
-                        {status}
-                        <span className="dots" />
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-
-            {choices && (
-              <div className="options">
-                {choices.map((opt, i) => (
-                  <button key={i} className="opt" onClick={() => send(opt)}>
-                    {opt}
-                  </button>
-                ))}
-                <button className="opt other" onClick={() => textareaRef.current?.focus()}>
-                  その他（自由入力）
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="composer">
-          <div className="field">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="作りたいブログ記事を入力…"
-              rows={1}
-            />
-            <button className="send" onClick={() => send()} disabled={busy || !input.trim()} aria-label="送信">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
+      {/* ── Region C: two-column body (chat | live preview) ───────────────── */}
+      <div className={`body view-${mobileView}`}>
+        <div className={`side ${sideOpen ? "open" : ""}`}>
+          <div className="side-head">
+            <span className="side-title">チャット履歴</span>
+            <button className="new-btn" onClick={newChat}>
+              ＋ 新規
             </button>
           </div>
+          <div className="conv-list">
+            {conversations.length === 0 && (
+              <div className="empty center" style={{ fontSize: 13 }}>
+                履歴はまだありません
+              </div>
+            )}
+            {conversations.map((c) => (
+              <button
+                key={c.id}
+                className={`conv ${c.id === convId ? "active" : ""}`}
+                onClick={() => openConversation(c.id)}
+              >
+                <span className="conv-title">{c.title}</span>
+                <span className="conv-date">
+                  {new Date(c.updatedAt).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+                </span>
+                <span className="del" onClick={(e) => deleteConv(c.id, e)} title="削除">
+                  ✕
+                </span>
+              </button>
+            ))}
+          </div>
+          <button className="logout-btn" onClick={doLogout}>
+            ログアウト
+          </button>
+          <PoweredBy className="side-powered" />
+        </div>
+
+        {/* LEFT column: chat */}
+        <div className="chat-col">
+          <div className="chat-col-head">
+            <div className="chat-col-head-l">
+              <span className="chat-col-title">✦ AIアシスタント</span>
+              <span className="chat-col-sub">と一緒に書きましょう</span>
+            </div>
+            <span className="chat-col-day">本日</span>
+          </div>
+
+          <div className="messages" ref={scrollRef}>
+            <div className="thread">
+              {messages.length === 0 && !busy && (
+                <div className="empty">
+                  <em>「リモート社員のオンボーディングについて記事を書きたい」</em>
+                  のように話しかけてください。
+                  <br />
+                  まず記事の目的（集客・SEO・情報提供など）を確認し、構成を提案し、下書きを書き、承認後に右の一覧へ公開します。
+                </div>
+              )}
+
+              {messages.map((m, i) => (
+                <div key={i} className={`turn ${m.role}`}>
+                  {m.role === "assistant" && (m.text || (!m.draftMarker && !m.seo)) && (
+                    <div className="who">アシスタント</div>
+                  )}
+                  {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
+                  {m.draftMarker && (
+                    <button className="draft-chip" onClick={() => setMobileView("preview")}>
+                      ✦ 下書きを作成しました。右の「ライブプレビュー」でご確認ください。
+                    </button>
+                  )}
+                  {m.seo && <SeoCard report={m.seo} />}
+                </div>
+              ))}
+
+              {busy && (streaming || status) && (
+                <div className="turn assistant">
+                  <div className="who">アシスタント</div>
+                  {streaming ? (
+                    <div className="bubble assistant">
+                      {streaming}
+                      <span className="caret" />
+                    </div>
+                  ) : (
+                    status && (
+                      <div className="status">
+                        <span className="pulse" />
+                        <span>
+                          {status}
+                          <span className="dots" />
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              {choices && (
+                <div className="options">
+                  {choices.map((opt, i) => (
+                    <button key={i} className="opt" onClick={() => send(opt)}>
+                      {opt}
+                    </button>
+                  ))}
+                  <button className="opt other" onClick={() => textareaRef.current?.focus()}>
+                    その他（自由入力）
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="composer">
+            <div className="field">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder="作りたいブログ記事を入力…"
+                rows={1}
+              />
+              <button className="send" onClick={() => send()} disabled={busy || !input.trim()} aria-label="送信">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT column: live preview */}
+        <div className="preview-col">
+          {/* mobile back-to-chat affordance */}
+          <button className="mobile-only preview-back" onClick={() => setMobileView("chat")}>
+            ← チャットに戻る
+          </button>
+          {draft ? (
+            <PreviewPane
+              draft={draft}
+              aiUpdating={busy}
+              confirming={publishConfirming}
+              setConfirming={setPublishConfirming}
+              onStep={bumpStep}
+              onPublished={loadBlogs}
+            />
+          ) : (
+            <PreviewEmpty />
+          )}
         </div>
       </div>
 
@@ -1083,7 +1298,7 @@ export default function Page() {
           <h2>公開済み</h2>
           <span className="count">{blogs.length}</span>
           <button
-            className="mobile-only icon-btn panel-close"
+            className="icon-btn panel-close"
             onClick={() => setPanelOpen(false)}
             aria-label="閉じる"
           >
