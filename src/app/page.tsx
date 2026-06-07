@@ -103,22 +103,44 @@ function displayBody(s: string): string {
 }
 
 // §02: extract a [[CONFIRM]] checklist block (lines of "ラベル: 値") from the text.
+// Defensive: small models sometimes forget the [[/CONFIRM]] close tag or stuff an
+// [[OPTIONS]] block / prose inside. We bound the block, strip any marker tokens
+// and bare button labels, and prefer clean "ラベル: 値" lines. If nothing usable
+// remains we return no card and let the message fall back to text + option chips.
 function parseConfirm(full: string): { rest: string; confirm?: ConfirmData } {
   const open = full.indexOf(CONF_OPEN);
   if (open === -1) return { rest: full };
   const before = full.slice(0, open);
   const afterOpen = full.slice(open + CONF_OPEN.length);
-  const close = afterOpen.indexOf(CONF_CLOSE);
-  const inner = close === -1 ? afterOpen : afterOpen.slice(0, close);
-  const after = close === -1 ? "" : afterOpen.slice(close + CONF_CLOSE.length);
-  const items: ConfirmItem[] = inner
+
+  // End at [[/CONFIRM]] if present, else at the next [[OPTIONS]], else end of text.
+  let inner: string;
+  let after: string;
+  const closeIdx = afterOpen.indexOf(CONF_CLOSE);
+  if (closeIdx !== -1) {
+    inner = afterOpen.slice(0, closeIdx);
+    after = afterOpen.slice(closeIdx + CONF_CLOSE.length);
+  } else {
+    const optIdx = afterOpen.indexOf(OPT_OPEN);
+    inner = optIdx !== -1 ? afterOpen.slice(0, optIdx) : afterOpen;
+    after = optIdx !== -1 ? afterOpen.slice(optIdx) : "";
+  }
+
+  const BUTTONS = /^(ok|はい|いいえ|直したい|キャンセル|ok、これで進める)$/i;
+  const lines = inner
     .split(/\r?\n/)
     .map((l) => l.replace(/^[\s\-*・]+/, "").trim())
     .filter(Boolean)
-    .map((line) => {
-      const m = line.match(/^(.+?)\s*[:：]\s*(.+)$/);
-      return m ? { label: m[1].trim(), value: m[2].trim() } : { label: "", value: line };
-    });
+    .filter((l) => !l.includes("[[") && !l.includes("]]")) // drop stray markers
+    .filter((l) => !BUTTONS.test(l)); // drop bare button labels
+  // Only clean "ラベル: 値" lines become card items. If the model produced none
+  // (sloppy block), we render NO card — the message falls back to plain text +
+  // the OK/直したい option chips, which still works. Never show prose/markers.
+  const items: ConfirmItem[] = lines
+    .map((line) => line.match(/^(.+?)\s*[:：]\s*(.+)$/))
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map((m) => ({ label: m[1].trim(), value: m[2].trim() }));
+
   return {
     rest: `${before} ${after}`.trim(),
     confirm: items.length ? { items } : undefined,
@@ -126,6 +148,8 @@ function parseConfirm(full: string): { rest: string; confirm?: ConfirmData } {
 }
 
 // Combined parse for a finished assistant message: confirm card + options + body.
+// When a confirm card is shown it owns the OK/直したい decision, so we suppress
+// any [[OPTIONS]] block on that same message (avoids duplicate choices).
 function parseAssistant(full: string): {
   body: string;
   options: string[];
@@ -133,7 +157,7 @@ function parseAssistant(full: string): {
 } {
   const { rest, confirm } = parseConfirm(full);
   const { body, options } = parseOptions(rest);
-  return { body, options, confirm };
+  return { body, options: confirm ? [] : options, confirm };
 }
 
 // §02: "AIが「これでいいですか？」と必ず止まる" — a colored checklist card the

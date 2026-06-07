@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
           if (msg.stop_reason !== "tool_use") break;
 
           const toolResults: any[] = [];
+          let draftProduced = false;
           for (const block of msg.content) {
             if (block.type === "tool_use") {
               emit({ type: "tool", name: block.name });
@@ -105,9 +106,25 @@ export async function POST(req: NextRequest) {
                 content: result.content,
                 is_error: result.isError,
               });
+              if (block.name === "propose_blog_post" && !result.isError) draftProduced = true;
             }
           }
           conv.messages.push({ role: "user", content: toolResults });
+
+          // Cost optimization: once a draft exists, the live preview + a canned
+          // follow-up cover the next steps. Skipping the extra orchestrator turn
+          // here saves one MODEL_CHAT call per draft (the user's draft→publish path
+          // makes zero further model calls). The synthetic assistant message keeps
+          // the conversation well-formed for the next user turn.
+          if (draftProduced) {
+            const canned =
+              "下書きができました。右の「ライブプレビュー」でご確認ください。" +
+              "画像の追加や公開はプレビュー上で行えます。\n\n" +
+              "[[OPTIONS]]\nSEOチェックをする\n内容を修正したい\n[[/OPTIONS]]";
+            conv.messages.push({ role: "assistant", content: [{ type: "text", text: canned }] });
+            emit({ type: "text", text: canned });
+            break;
+          }
         }
 
         // Persist the conversation after the turn completes.
