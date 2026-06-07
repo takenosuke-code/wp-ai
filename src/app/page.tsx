@@ -2009,6 +2009,16 @@ export default function Page() {
     setPublishConfirming(true);
   }
 
+  // A chat option chip. A "publish" intent (e.g. そのまま公開する) opens the publish
+  // flow (タイトル設定) instead of being sent to the AI, which can't publish.
+  function onOption(opt: string) {
+    if (draft && /公開/.test(opt) && !/(SEO|プレビュー|見た目|済み|確認)/.test(opt)) {
+      startPublish();
+      return;
+    }
+    send(opt);
+  }
+
   return (
     <div className="app">
       {titleOpen && draft && (
@@ -2278,7 +2288,7 @@ export default function Page() {
               {choices && (
                 <div className="options">
                   {choices.map((opt, i) => (
-                    <button key={i} className="opt" onClick={() => send(opt)}>
+                    <button key={i} className="opt" onClick={() => onOption(opt)}>
                       {opt}
                     </button>
                   ))}
