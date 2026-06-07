@@ -1197,6 +1197,137 @@ function PreviewLoading() {
   );
 }
 
+// §06 タイトル設定: edit the post's metadata (title/slug/category/tags/excerpt)
+// before publishing, with a search-result preview. No model calls — publishing
+// reuses the draft body + images with these edited values.
+function TitleSettings({
+  draft,
+  onCancel,
+  onProceed,
+}: {
+  draft: DraftPreview;
+  onCancel: () => void;
+  onProceed: (f: {
+    title: string;
+    slug: string;
+    category: string;
+    tags: string[];
+    excerpt: string;
+  }) => void;
+}) {
+  const [title, setTitle] = useState(draft.title);
+  const [slug, setSlug] = useState(draft.slug);
+  const [category, setCategory] = useState(draft.category);
+  const [tags, setTags] = useState((draft.tags ?? []).join(", "));
+  const [excerpt, setExcerpt] = useState(draft.excerpt);
+  const tagList = tags
+    .split(/[,、]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="ts-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ts-head">
+          <div>
+            <div className="ts-step">STEP 06 / 08</div>
+            <h2 className="ts-title">タイトル設定</h2>
+            <div className="ts-sub">検索結果や一覧での見え方を整えます。</div>
+          </div>
+          <button className="ts-x" onClick={onCancel} aria-label="閉じる">
+            ✕
+          </button>
+        </div>
+        <div className="ts-body">
+          <label className="ts-field">
+            <span className="ts-flabel">タイトル</span>
+            <input className="ts-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </label>
+          <label className="ts-field">
+            <span className="ts-flabel">URLスラッグ</span>
+            <input
+              className="ts-input mono"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="例: cs61c-guide"
+            />
+          </label>
+          <div className="ts-row">
+            <label className="ts-field">
+              <span className="ts-flabel">カテゴリ</span>
+              <input
+                className="ts-input"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
+            </label>
+            <label className="ts-field">
+              <span className="ts-flabel">タグ（カンマ区切り）</span>
+              <input
+                className="ts-input"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="例: 学習, 大学, CS"
+              />
+            </label>
+          </div>
+          <label className="ts-field">
+            <span className="ts-flabel">
+              抜粋（メタディスクリプション）
+              <span className={`ts-count ${excerpt.length > 160 ? "over" : ""}`}>
+                {excerpt.length}字
+              </span>
+            </span>
+            <textarea
+              className="ts-textarea"
+              value={excerpt}
+              onChange={(e) => setExcerpt(e.target.value)}
+              rows={3}
+              placeholder="検索結果や一覧に表示される120〜160字の説明文"
+            />
+          </label>
+
+          <div className="ts-preview">
+            <div className="ts-preview-tag">検索結果プレビュー</div>
+            <div className="ts-snippet">
+              <div className="ts-snip-url">loopasia.com › blog › {slug || "…"}</div>
+              <div className="ts-snip-title">{title || "（タイトル未設定）"}</div>
+              <div className="ts-snip-desc">{excerpt || "（抜粋がここに表示されます）"}</div>
+            </div>
+            {(category || tagList.length > 0) && (
+              <div className="preview-chips" style={{ marginTop: 10 }}>
+                {category && <span className="cat-chip">{category}</span>}
+                {tagList.map((t) => (
+                  <span key={t} className="tag-chip"># {t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="ts-foot">
+          <button className="pub-cancel" onClick={onCancel}>
+            キャンセル
+          </button>
+          <button
+            className="pub-btn"
+            disabled={!title.trim() || !slug.trim()}
+            onClick={() =>
+              onProceed({
+                title: title.trim(),
+                slug: slug.trim(),
+                category: category.trim(),
+                tags: tagList,
+                excerpt: excerpt.trim(),
+              })
+            }
+          >
+            公開へ進む →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -1221,6 +1352,8 @@ export default function Page() {
   // top-header "公開する →" button triggers the SAME confirm flow the pane owns.
   const [draft, setDraft] = useState<DraftPreview | null>(null);
   const [publishConfirming, setPublishConfirming] = useState(false);
+  // §06 タイトル設定: edit title/slug/category/tags/excerpt before publishing.
+  const [titleOpen, setTitleOpen] = useState(false);
   // §03: images uploaded in the chat composer (before/while drafting). They show
   // as cards in the chat and are auto-placed into the draft (see PreviewPane).
   const [chatImages, setChatImages] = useState<ChatImage[]>([]);
@@ -1332,6 +1465,7 @@ export default function Page() {
     setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
+    setTitleOpen(false);
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
@@ -1368,6 +1502,7 @@ export default function Page() {
     setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
+    setTitleOpen(false);
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
@@ -1706,17 +1841,38 @@ export default function Page() {
     hour: "2-digit",
     minute: "2-digit",
   });
-  // The header "公開する →" + the pane share one confirm flow: this opens it and
-  // (on mobile) brings the preview into view so the confirm is visible.
+  // §06: "公開する →" first opens タイトル設定 (edit metadata), then the confirm.
   function startPublish() {
     if (!draft) return;
-    setPublishConfirming(true);
     setMobileView("preview");
-    reachStep(8); // entering 公開
+    setTitleOpen(true);
+    reachStep(6); // タイトル設定
+  }
+  // After タイトル設定: merge the edited metadata into the draft, then open the
+  // publish confirm (no model cost — publishing reuses the draft body + images).
+  function proceedFromTitle(fields: {
+    title: string;
+    slug: string;
+    category: string;
+    tags: string[];
+    excerpt: string;
+  }) {
+    setDraft((d) => (d ? { ...d, ...fields } : d));
+    setTitleOpen(false);
+    markDone(6);
+    reachStep(8);
+    setPublishConfirming(true);
   }
 
   return (
     <div className="app">
+      {titleOpen && draft && (
+        <TitleSettings
+          draft={draft}
+          onCancel={() => setTitleOpen(false)}
+          onProceed={proceedFromTitle}
+        />
+      )}
       {seoOpen && seoReport && (
         <SeoScreen
           report={seoReport}
