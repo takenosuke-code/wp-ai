@@ -305,23 +305,6 @@ function renderMarkdown(md: string): string {
 function PoweredBy({ className = "" }: { className?: string }) {
   return (
     <div className={`powered ${className}`}>
-      <svg className="powered-mark" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-        <defs>
-          <linearGradient id="nq-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#D9B978" />
-            <stop offset="100%" stopColor="#8A6D2F" />
-          </linearGradient>
-        </defs>
-        <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#nq-grad)" />
-        <path
-          d="M10 22 V10 L22 22 V10"
-          stroke="#fff"
-          strokeWidth="2.6"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
       <span className="powered-text">
         Powered by{" "}
         <b>
