@@ -509,16 +509,22 @@ function SeoCard({ report }: { report: SeoReport }) {
 
 // ── Interactive draft preview: per-section image "+" slots + client publish ──
 type SlotImage = { url: string; alt: string };
-// Images uploaded in the chat composer (before the draft exists). They carry
-// display metadata for the chat cards and are auto-placed into the draft.
-type ChatImage = { url: string; alt: string; name: string; size: number };
+// Images uploaded in the chat composer. They carry display metadata for the chat
+// cards; `section` is the draft section Claude's vision call chose for placement
+// (undefined until placed → positional fallback).
+type ChatImage = { url: string; alt: string; name: string; size: number; section?: number };
 
-// Auto-place images across the draft's sections (§03 「自動配置」): one per
-// section in order; any extras pile onto the last section. The first image
-// therefore lands in section 0 and becomes the featured/hero image.
-function distributeImages(imgs: SlotImage[], sectionCount: number): SlotImage[][] {
+// Place images into the draft's sections. If a vision-assigned `section` exists we
+// use it (§03 SEO-aware placement); otherwise fall back to one-per-section order.
+function distributeImages(
+  imgs: { url: string; alt: string; section?: number }[],
+  sectionCount: number
+): SlotImage[][] {
   const slots: SlotImage[][] = Array.from({ length: Math.max(sectionCount, 1) }, () => []);
-  imgs.forEach((im, i) => slots[Math.min(i, slots.length - 1)].push(im));
+  imgs.forEach((im, i) => {
+    const sec = typeof im.section === "number" ? im.section : i;
+    slots[Math.min(Math.max(sec, 0), slots.length - 1)].push({ url: im.url, alt: im.alt });
+  });
   return slots;
 }
 
@@ -894,6 +900,9 @@ export default function Page() {
   // as cards in the chat and are auto-placed into the draft (see PreviewPane).
   const [chatImages, setChatImages] = useState<ChatImage[]>([]);
   const [chatUploading, setChatUploading] = useState(false);
+  // §03: once the draft exists we ask 「画像を追加しますか？」. Skipping is a pure
+  // client action (no API call); it just resolves this prompt.
+  const [imageAsked, setImageAsked] = useState(false);
   const chatFileRef = useRef<HTMLInputElement>(null);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
@@ -931,6 +940,7 @@ export default function Page() {
   const shownRef = useRef(0);
   const doneRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const placingRef = useRef(false);
 
   async function loadBlogs() {
     const res = await fetch("/api/blogs");
@@ -984,6 +994,7 @@ export default function Page() {
     setDraft(null);
     setPublishConfirming(false);
     setChatImages([]);
+    setImageAsked(false);
     setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
@@ -1013,6 +1024,7 @@ export default function Page() {
     setDraft(null);
     setPublishConfirming(false);
     setChatImages([]);
+    setImageAsked(false);
     setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
@@ -1054,6 +1066,43 @@ export default function Page() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, streaming, status]);
+
+  // §03 vision placement: once a draft exists, ask Claude (vision) which section
+  // each newly-added image fits best + an SEO alt. Runs ONLY for unplaced images,
+  // so skipping/adding-none costs nothing. Falls back to positional on failure.
+  useEffect(() => {
+    if (!draft || placingRef.current) return;
+    const pending = chatImages.filter((im) => im.section === undefined);
+    if (pending.length === 0) return;
+    placingRef.current = true;
+    (async () => {
+      const secs = splitSections(draft.content).map((s) =>
+        s.replace(/[#>*`_-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120)
+      );
+      for (const im of pending) {
+        let section = 0;
+        let alt = im.alt;
+        try {
+          const res = await fetch("/api/place-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imageUrl: im.url, sections: secs, title: draft.title }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            if (Number.isInteger(data.section)) section = data.section;
+            if (data.alt) alt = data.alt;
+          }
+        } catch {
+          /* keep defaults (positional section 0) */
+        }
+        setChatImages((cur) =>
+          cur.map((c) => (c.url === im.url ? { ...c, section, alt } : c))
+        );
+      }
+      placingRef.current = false;
+    })();
+  }, [draft, chatImages]);
 
   function startReveal() {
     shownRef.current = 0;
@@ -1200,6 +1249,7 @@ export default function Page() {
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "image";
       setChatImages((imgs) => [...imgs, { url: data.url, alt, name: file.name, size: file.size }]);
+      setImageAsked(true); // an image was added → the 画像 prompt is resolved
       markDone(2); // 画像をアップ
     } catch {
       // surfaced inline elsewhere; keep the composer quiet on failure
@@ -1452,6 +1502,33 @@ export default function Page() {
                       </div>
                     )
                   )}
+                </div>
+              )}
+
+              {draft && !imageAsked && chatImages.length === 0 && (
+                <div className="img-ask">
+                  <div className="img-ask-h">記事に画像を追加しますか？</div>
+                  <div className="img-ask-sub">
+                    追加すると、AIが内容を見て最適な位置に配置します。
+                  </div>
+                  <div className="img-ask-btns">
+                    <button
+                      className="img-ask-yes"
+                      onClick={() => chatFileRef.current?.click()}
+                      disabled={chatUploading}
+                    >
+                      {chatUploading ? "アップロード中…" : "画像を追加する"}
+                    </button>
+                    <button
+                      className="img-ask-no"
+                      onClick={() => {
+                        setImageAsked(true);
+                        markDone(2);
+                      }}
+                    >
+                      画像なしで進む
+                    </button>
+                  </div>
                 </div>
               )}
 
