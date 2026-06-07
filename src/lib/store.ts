@@ -105,24 +105,27 @@ class SupabaseStore implements PublishTarget {
       }
     }
 
-    const { data, error } = await getSupabase()
-      .from("blogs")
-      .insert({
-        title: input.title,
-        slug: input.slug,
-        excerpt: input.excerpt,
-        content: input.content,
-        category: input.category,
-        tags: input.tags ?? [],
-        featured_image_prompt: input.featuredImagePrompt,
-        featured_image_url: input.featuredImageUrl ?? null,
-        post_type: input.postType ?? null,
-        publish_at: input.publishAt ?? new Date().toISOString(),
-        embedding,
-        content_hash,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      title: input.title,
+      slug: input.slug,
+      excerpt: input.excerpt,
+      content: input.content,
+      category: input.category,
+      tags: input.tags ?? [],
+      featured_image_prompt: input.featuredImagePrompt,
+      featured_image_url: input.featuredImageUrl ?? null,
+      post_type: input.postType ?? null,
+      publish_at: input.publishAt ?? new Date().toISOString(),
+      embedding,
+      content_hash,
+    };
+    let { data, error } = await getSupabase().from("blogs").insert(row).select().single();
+    // Resilient: if the publish_at column isn't migrated yet (007), publish now
+    // (immediately) by retrying without it — so publishing never hard-breaks.
+    if (error && /publish_at/i.test(`${error.message} ${(error as any).details ?? ""}`)) {
+      const { publish_at, ...rest } = row;
+      ({ data, error } = await getSupabase().from("blogs").insert(rest).select().single());
+    }
     if (error) throw error;
     return rowToBlog(data);
   }
