@@ -10,6 +10,7 @@ export interface BlogPost {
   featuredImageUrl?: string; // public URL of the uploaded featured image (first image placed in the post)
   postType?: string; // intent/format: how-to | marketing | informational | opinion | news | personal
   createdAt: string; // ISO timestamp
+  publishAt?: string; // ISO (UTC) when the post goes live; future = scheduled (§07)
 }
 
 export type NewBlogPost = Omit<BlogPost, "id" | "createdAt">;

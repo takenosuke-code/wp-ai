@@ -12,19 +12,24 @@
   --ink-faint: #9b968c;
   --line: #e7e4dc;
   --line-soft: #efece5;
-  --accent: #c8463a;
-  --accent-ink: #a8392f;
-  --accent-wash: #fbeeec;
-  /* indigo "AI/SEO" accent (the proposal's Loop紫) — used for the step bar + SEO */
+  /* Restrained 4-color system (design proposal §06): 白 / 温白 / 藍 / AI紫 only.
+     藍 (indigo) is the primary brand accent; AI紫 (purple) marks AI/SEO/steps.
+     No red/green/orange — status is shown by symbols (✓ △ ＋), not hue. */
+  --accent: #3a3f9e; /* 藍 indigo */
+  --accent-ink: #2c2f7d;
+  --accent-wash: #edeef8;
+  /* AI紫 accent — used for the step bar + SEO + AI moments */
   --ai: #4f46e5;
   --ai-ink: #4338ca;
   --ai-wash: #eef0fe;
-  --ok: #3f9b6d;
-  --warn: #c98a2b;
+  --ok: var(--accent); /* 達成 — 藍 */
+  --warn: #8a867d; /* 要改善 — neutral warm gray (caution shown via △) */
   --user-bubble: #ece9e1;
   --shadow: 0 1px 2px rgba(26, 25, 23, 0.04), 0 8px 24px rgba(26, 25, 23, 0.05);
   --font-sans: "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Shippori Mincho B1", "Noto Serif JP", serif;
+  --font-serif: "Noto Serif JP", serif;
+  /* accent italic serif (proposal §06): the Loop "L" mark + italic flourishes */
+  --font-accent: "Instrument Serif", Georgia, "Times New Roman", serif;
   --radius: 14px;
 }
 
@@ -48,21 +53,188 @@ body {
   background: var(--accent-wash);
 }
 
-/* ---------- Layout ---------- */
+/* ---------- Layout ----------
+   Whole workspace = THREE stacked regions: (A) top header bar, (B) full-width
+   step pill row, (C) two-column body (chat | live preview). The history sidebar
+   sits inside the body row on the far left; the published panel is an off-canvas
+   drawer on all widths. */
 
 .app {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 380px;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  min-height: 0;
 }
 
-@media (max-width: 1100px) {
-  .app {
-    grid-template-columns: 230px minmax(0, 1fr);
-  }
-  .panel {
-    display: none;
-  }
+/* Region C — the body is the "Classic Split" 2カラム: chat | live preview.
+   The chat-history sidebar is an off-canvas drawer at ALL widths (opened by the
+   ☰ button in the header), so the two-column split is the only main content. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+
+/* The history sidebar — a drawer at every width (it never takes a column). */
+.side {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 84vw;
+  max-width: 330px;
+  z-index: 40;
+  transform: translateX(-100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+}
+.side.open {
+  transform: translateX(0);
+}
+/* the ☰ history toggle lives in the header at all widths */
+.topbar .brand-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ---------- Region A: top header bar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.topbar-l {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.topbar-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex: none;
+}
+.topbar-div {
+  color: var(--line);
+  font-size: 18px;
+  flex: none;
+}
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-faint);
+}
+.crumb-folder {
+  display: inline-flex;
+  color: var(--ink-faint);
+  flex: none;
+}
+.crumb-seg {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  flex: none;
+}
+.crumb-chev {
+  color: var(--ink-faint);
+  flex: none;
+}
+.crumb-title {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  min-width: 0;
+}
+.topbar-r {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.autosave-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.ghost-btn:hover {
+  border-color: var(--ink-faint);
+  background: var(--line-soft);
+}
+.primary-btn {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+.primary-btn:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.primary-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.primary-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.brand-panel-count {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* ---------- Conversations sidebar ---------- */
@@ -182,12 +354,80 @@ body {
   min-width: 0;
 }
 
-.panel {
-  border-left: 1px solid var(--line);
+/* LEFT body column: chat */
+.chat-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+}
+.chat-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
+  flex: none;
+}
+.chat-col-head-l {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.chat-col-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ai-ink);
+  white-space: nowrap;
+}
+.chat-col-sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.chat-col-day {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  flex: none;
 }
 
-/* ---------- Header ---------- */
+/* RIGHT body column: live preview */
+.preview-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--paper);
+}
+
+/* the published-articles list is an off-canvas drawer on all widths now */
+.panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 84vw;
+  max-width: 380px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  transform: translateX(100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+}
+.panel.open {
+  transform: translateX(0);
+}
+
+/* ---------- Header (legacy .brand kept for the login screen mark) ---------- */
 
 .brand {
   display: flex;
@@ -197,12 +437,32 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand .mark {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-wash);
+/* Loop logo badge — colors sampled from the client's PDF
+   (indigo gradient #383C9D top-left → #6D60D4 bottom-right, white serif "L") */
+.mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3a3d9e 0%, #544cc8 52%, #6d60d4 100%);
+  box-shadow:
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.35),
+    inset 0 -2px 4px rgba(40, 36, 110, 0.4),
+    0 2px 6px rgba(64, 56, 166, 0.35);
+}
+.mark::after {
+  content: "L";
+  /* accent italic serif — Instrument Serif (proposal §06), Georgia as fallback */
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1;
+  color: #fff;
+  transform: translateY(0.5px);
 }
 
 .brand .name {
@@ -356,6 +616,18 @@ body {
   border-color: var(--ink-faint);
 }
 
+/* the in-chat "proceed to publish" CTA — filled so it reads as the primary path */
+.opt.opt-go {
+  color: #fff;
+  background: var(--ai);
+  border-color: var(--ai);
+  font-weight: 600;
+}
+.opt.opt-go:hover {
+  background: var(--ai-ink);
+  border-color: var(--ai-ink);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {
@@ -367,12 +639,12 @@ body {
   max-width: 720px;
   margin: 0 auto;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 8px 8px 8px 16px;
+  padding: 10px 12px 10px 14px;
   box-shadow: var(--shadow);
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -383,7 +655,7 @@ body {
 }
 
 .field textarea {
-  flex: 1;
+  width: 100%;
   resize: none;
   border: none;
   outline: none;
@@ -391,8 +663,168 @@ body {
   color: var(--ink);
   font: inherit;
   line-height: 1.6;
-  padding: 7px 0;
+  padding: 4px 2px;
   max-height: 180px;
+}
+
+/* §03 smart-input toolbar row: 画像/ファイル/音声 tools · ⌘↵ hint · send */
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tool-btn {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tool-btn:hover:not(:disabled) {
+  background: var(--line-soft);
+  color: var(--accent);
+}
+.tool-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.composer-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §03 chat image upload cards (appear in the conversation) */
+.chat-uploads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.upload-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px 8px 8px;
+  max-width: 230px;
+}
+.upload-card img {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+}
+.upload-meta {
+  min-width: 0;
+}
+.upload-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.upload-size {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.upload-x {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.upload-x:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* §03 「画像を追加しますか？」 prompt (skip = no API call) */
+.img-ask {
+  margin-top: 8px;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.img-ask-h {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+.img-ask-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 4px 0 12px;
+  line-height: 1.6;
+}
+.img-ask-btns {
+  display: flex;
+  gap: 8px;
+}
+.img-ask-yes {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.img-ask-yes:hover:not(:disabled) {
+  background: var(--accent-ink);
+}
+.img-ask-yes:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.img-ask-no {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.img-ask-no:hover {
+  border-color: var(--ink-faint);
 }
 
 .field textarea::placeholder {
@@ -807,13 +1239,248 @@ body {
   margin-top: 18px;
 }
 
+/* ── Chat: draft-ready marker chip in the stream ───────────────────────── */
+.draft-chip {
+  margin-top: 4px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border: 1px solid var(--ai);
+  border-radius: 4px 14px 14px 14px;
+  padding: 12px 15px;
+  line-height: 1.7;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.draft-chip:hover {
+  background: #e6e9fe;
+}
+
+/* ── Region C right column: the live preview pane ───────────────────────── */
+.preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: none;
+}
+.preview-head-l {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.preview-h-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.preview-h-sub {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+/* PC / スマホ segmented toggle */
+.seg {
+  display: inline-flex;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  flex: none;
+}
+.seg-btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.seg-btn.on {
+  background: var(--surface);
+  color: var(--ai-ink);
+  box-shadow: 0 1px 2px rgba(26, 25, 23, 0.1);
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 22px 30px;
+}
+/* the rendered article surface; narrows to a phone width in スマホ mode */
+.preview-surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 30px 34px 36px;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 760px;
+  transition: max-width 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.preview-surface.is-mobile {
+  max-width: 390px;
+  padding: 22px 20px 28px;
+}
+.ai-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 999px;
+  padding: 4px 11px;
+  margin-bottom: 14px;
+  /* §03 "薄紫のバッジが点滅" while the AI is editing the draft */
+  animation: badge-blink 1.4s ease-in-out infinite;
+}
+@keyframes badge-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-updating {
+    animation: none;
+  }
+}
+.preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+.cat-chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 6px;
+  padding: 3px 11px;
+}
+.tag-chip {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--line-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.preview-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+.is-mobile .preview-title {
+  font-size: 22px;
+}
+.preview-byline {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.preview-hero {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin: 20px 0 4px;
+  display: block;
+}
+.preview-hero-empty {
+  margin: 20px 0 4px;
+  padding: 26px 18px;
+  text-align: center;
+  background: var(--accent-wash);
+  border: 1px dashed var(--accent);
+  border-radius: 12px;
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.preview .prose {
+  margin-top: 18px;
+}
+
+/* empty state before any draft exists */
+.preview-blank {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  color: var(--ink-soft);
+  padding: 40px 24px;
+}
+.preview-blank-glyph {
+  font-size: 38px;
+  opacity: 0.4;
+  margin-bottom: 6px;
+}
+.preview-blank p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  max-width: 320px;
+}
+.preview-blank .muted {
+  font-size: 12.5px;
+}
+
+/* the publish bar pinned at the bottom of the preview pane */
+.preview .pubbar {
+  flex: none;
+  margin: 0;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* mobile-only "back to chat" affordance in the preview column */
+.preview-back {
+  display: none;
+}
+
 /* ── Auth (login gate) ─────────────────────────────────────────────── */
 .auth-screen {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg, #f7f5f0);
+  /* subtle indigo-tinted backdrop so the login matches the app's 藍/AI紫 scheme */
+  background: radial-gradient(120% 120% at 50% 0%, var(--accent-wash) 0%, var(--paper) 55%);
   padding: 24px;
 }
 .auth-loading {
@@ -855,14 +1522,16 @@ body {
 .auth-input {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--line, #e6e2d9);
+  border: 1px solid var(--line);
   border-radius: 9px;
   font-size: 14px;
-  background: var(--bg-soft, #faf8f4);
+  background: var(--paper);
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .auth-input:focus {
-  border-color: var(--accent, #b8965a);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 .auth-error {
   color: #b3261e;
@@ -874,12 +1543,16 @@ body {
   padding: 12px 16px;
   border: none;
   border-radius: 9px;
-  background: var(--accent, #b8965a);
+  background: var(--accent);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.06em;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+.auth-btn:hover:not(:disabled) {
+  background: var(--accent-ink);
 }
 .auth-btn:disabled {
   opacity: 0.5;
@@ -908,12 +1581,6 @@ body {
   gap: 8px;
   user-select: none;
 }
-.powered-mark {
-  display: block;
-  border-radius: 6px;
-  filter: drop-shadow(0 1px 3px rgba(138, 109, 47, 0.28));
-  flex-shrink: 0;
-}
 .powered-text {
   font-size: 11.5px;
   letter-spacing: 0.05em;
@@ -926,7 +1593,7 @@ body {
   letter-spacing: 0.06em;
 }
 .powered-accent {
-  color: var(--accent, #b8965a);
+  color: var(--accent);
 }
 /* placements */
 .auth-powered {
@@ -944,79 +1611,76 @@ body {
 /* ── 8-step progress bar (top of chat column) ──────────────────────────── */
 .steps {
   display: flex;
-  align-items: stretch;
-  gap: 6px;
-  padding: 11px 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  overflow-x: auto;
+  flex: none;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .step {
-  display: flex;
+  flex: none;
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 6px 4px 6px 0;
-  position: relative;
+  padding: 6px 11px;
+  border-radius: 999px;
   white-space: nowrap;
-}
-.step:not(:last-child)::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  min-width: 8px;
-  background: var(--line);
-  margin-left: 4px;
+  color: var(--ink-faint);
+  transition: background 0.2s ease, color 0.2s ease;
 }
 .step-n {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-size: 10.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 17px;
+  font-family: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  font-size: 11.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: var(--ink-faint);
-  background: var(--line-soft);
-  border: 1px solid var(--line);
-  transition: all 0.2s ease;
-}
-.step-label {
-  font-size: 11.5px;
-  color: var(--ink-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: color 0.2s ease;
 }
-.step.done .step-n {
-  background: var(--ai);
-  border-color: var(--ai);
-  color: #fff;
+.step-n svg {
+  width: 14px;
+  height: 14px;
 }
-.step.done .step-label {
+.step-label {
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+/* completed step: check + slightly darker label */
+.step.done {
   color: var(--ink-soft);
 }
+.step.done .step-n {
+  color: var(--ink-soft);
+}
+/* current step: filled dark pill */
+.step.active {
+  background: var(--ink);
+}
 .step.active .step-n {
-  background: var(--ai-wash);
-  border-color: var(--ai);
-  color: var(--ai-ink);
-  box-shadow: 0 0 0 3px var(--ai-wash);
+  color: rgba(255, 255, 255, 0.7);
 }
 .step.active .step-label {
-  color: var(--ai-ink);
+  color: #fff;
   font-weight: 700;
 }
 
 @media (max-width: 720px) {
-  .step-label {
-    display: none;
-  }
   .step {
-    flex: none;
+    padding: 6px 9px;
+    gap: 6px;
+  }
+  .step-label {
+    font-size: 12px;
   }
 }
 
@@ -1103,13 +1767,13 @@ body {
   font-weight: 700;
 }
 .comp.hi {
-  color: var(--accent);
+  color: var(--ai); /* 高: AI紫 (stands out) */
 }
 .comp.mid {
-  color: var(--warn);
+  color: var(--warn); /* 中: neutral gray */
 }
 .comp.lo {
-  color: var(--ok);
+  color: var(--accent); /* 低: 藍 */
 }
 .seo-checks,
 .seo-kw,
@@ -1223,6 +1887,401 @@ body {
   font-size: 11px;
 }
 
+/* ══ §04 dedicated SEO screen (Step-by-Step variation) ══════════════════════
+   Full-screen overlay: large left step sidebar + a 4-card SEO layout. */
+.seo-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  background: var(--paper);
+  animation: fade 0.2s ease both;
+}
+.seo-side {
+  width: 290px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 18px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.seo-side-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.seo-side-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 15px;
+}
+.seo-side-name span {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.seo-side-draft {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.seo-side-draft-tag {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+.seo-side-draft-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.seo-side-draft-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+}
+.seo-side-flow {
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.05em;
+  padding: 0 4px;
+}
+.seo-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.seo-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+}
+.seo-step-ic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--line-soft);
+  color: var(--ink-faint);
+}
+.seo-step-ic svg {
+  width: 17px;
+  height: 17px;
+}
+.seo-step-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.seo-step-n {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-faint);
+  letter-spacing: 0.05em;
+}
+.seo-step-label {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.seo-step-chev {
+  margin-left: auto;
+  color: var(--ai);
+  font-size: 16px;
+}
+/* done — soft green check (matches the mockup; proposal §01 "完了は緑") */
+.seo-step.done .seo-step-ic {
+  background: #e6f3ec;
+  color: #3f9b6d;
+}
+.seo-step.done .seo-step-label {
+  color: var(--ink);
+}
+/* active — indigo highlight */
+.seo-step.active {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+.seo-step.active .seo-step-ic {
+  background: var(--ai);
+  color: #fff;
+}
+.seo-step.active .seo-step-n {
+  color: var(--ai-ink);
+}
+.seo-step.active .seo-step-label {
+  color: var(--ai-ink);
+  font-weight: 700;
+}
+
+.seo-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 26px 30px 44px;
+}
+.seo-main-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.seo-main-step {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.seo-main-title {
+  font-family: var(--font-serif);
+  font-size: 25px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.3;
+}
+.seo-main-sub {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.seo-main-actions {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.seo-cards {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+/* two independent columns so cards stack tightly (no row-aligned gaps) */
+.seo-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.seo-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+}
+.seo-card-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.seo-card-ic {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--ai-wash);
+  color: var(--ai);
+}
+.seo-card-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.seo-card-ht {
+  min-width: 0;
+}
+.seo-card-t {
+  font-weight: 700;
+  font-size: 14px;
+}
+.seo-card-sub {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.seo-okbadge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3f9b6d;
+  background: #e6f3ec;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.seo-okbadge.neutral {
+  color: var(--ink-soft);
+  background: var(--line-soft);
+}
+.seo-okbadge.down {
+  color: var(--ink-soft);
+  background: var(--line-soft);
+}
+.kw-optimize {
+  margin-top: 12px;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.kw-optimize:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.kw-optimize:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.seo-score-stats {
+  display: flex;
+  gap: 30px;
+  margin-top: 10px;
+}
+.seo-stat {
+  font-weight: 700;
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.seo-kwlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.kw-row:hover {
+  background: var(--line-soft);
+}
+.kw-row.on {
+  background: var(--ai-wash);
+  border-color: var(--ai);
+}
+.kw-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.kw-check.on {
+  background: var(--ai);
+  border-color: var(--ai);
+}
+.kw-check svg {
+  width: 12px;
+  height: 12px;
+}
+.kw-row .kw-term {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.kw-vol {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.kw-row .comp {
+  font-size: 12px;
+}
+
+.seo-complist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.seo-complist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 9px 4px;
+}
+.cmp-rank {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--line-soft);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.cmp-body {
+  flex: 1;
+  min-width: 0;
+}
+.cmp-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+@media (max-width: 900px) {
+  .seo-side {
+    display: none;
+  }
+  .seo-cards {
+    flex-direction: column;
+  }
+  .seo-main {
+    padding: 18px 16px 32px;
+  }
+}
+
 /* ── Draft image slots + publish bar ───────────────────────────────────── */
 .prose img {
   max-width: 100%;
@@ -1231,53 +2290,68 @@ body {
   display: block;
   margin: 6px 0;
 }
-.imgslot {
+/* §03 in-preview images render FULL SIZE (true to the published article). A
+   large image fills the width; smaller ones sit side by side and wrap — i.e.
+   "right or under depending on size". Hover an image to 差し替え / 削除. */
+.sec-images {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin: 4px 0 16px;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0;
 }
-.thumb {
+.sec-img {
   position: relative;
-  width: 96px;
-  height: 72px;
-  border-radius: 9px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  flex: none;
+  margin: 0;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
-.thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.sec-img img {
   display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
 }
-.thumb-x {
+.sec-img-tools {
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(26, 25, 23, 0.62);
-  color: #fff;
-  font-size: 11px;
-  line-height: 1;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.sec-img:hover .sec-img-tools {
+  opacity: 1;
+}
+.sec-img-tools button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 9px;
   cursor: pointer;
-  display: grid;
-  place-items: center;
 }
-.thumb-x:hover {
-  background: var(--accent);
+.sec-img-tools button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
-.add-img {
+.sec-img-tools button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* subtle "add another image" affordance under each section */
+.add-more {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 72px;
-  padding: 0 16px;
+  margin: 0 0 18px;
+  padding: 7px 13px;
   border: 1.5px dashed var(--line);
   border-radius: 9px;
   background: transparent;
@@ -1287,12 +2361,12 @@ body {
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.add-img:hover:not(:disabled) {
+.add-more:hover:not(:disabled) {
   border-color: var(--ai);
   color: var(--ai-ink);
   background: var(--ai-wash);
 }
-.add-img:disabled {
+.add-more:disabled {
   opacity: 0.55;
   cursor: default;
 }
@@ -1356,20 +2430,54 @@ body {
 .pub-confirm {
   width: 100%;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
-  flex-wrap: wrap;
   font-size: 13px;
   color: var(--ink-soft);
   background: var(--ai-wash);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border: 1px solid var(--ai);
+  border-radius: 12px;
+  padding: 16px;
+}
+.pub-confirm-q {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ai-ink);
+}
+.pub-summary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pub-summary > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.pub-summary dt {
+  flex: none;
+  width: 72px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+.pub-summary dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pub-confirm-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 .pub-confirm-btns {
   display: flex;
   gap: 8px;
   flex: none;
+  justify-content: flex-end;
 }
 .pub-cancel {
   font: inherit;
@@ -1412,9 +2520,6 @@ body {
 .mobile-only {
   display: none;
 }
-.drawer-backdrop {
-  display: none;
-}
 .icon-btn {
   font: inherit;
   border: 1px solid var(--line);
@@ -1426,13 +2531,29 @@ body {
 .icon-btn:active {
   transform: scale(0.96);
 }
+.panel-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
-@media (max-width: 640px) {
-  /* chat fills the screen; .side and .panel are taken out of flow below */
-  .app {
-    grid-template-columns: 1fr;
-  }
+/* The drawer backdrop is shown whenever a drawer is open (any breakpoint). */
+.drawer-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 25, 23, 0.34);
+  backdrop-filter: blur(2px);
+  z-index: 35;
+  animation: fade 0.2s ease both;
+}
 
+/* ── Phone: the two body columns stack into one swappable view ──────────── */
+@media (max-width: 720px) {
   .mobile-only {
     display: inline-flex;
     align-items: center;
@@ -1449,19 +2570,6 @@ body {
     width: 34px;
     padding: 0;
   }
-  .brand-panel {
-    margin-left: auto;
-    font-size: 12.5px;
-  }
-  .brand-panel-count {
-    background: var(--accent-wash);
-    color: var(--accent-ink);
-    border-radius: 999px;
-    padding: 1px 7px;
-    margin-left: 6px;
-    font-size: 11px;
-    font-weight: 700;
-  }
   .panel-close {
     width: 32px;
     height: 32px;
@@ -1469,69 +2577,68 @@ body {
     margin-left: auto;
   }
 
-  /* off-canvas drawers */
-  .side,
-  .panel {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 84vw;
-    max-width: 330px;
-    z-index: 40;
-    transition: transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
-    box-shadow: 0 0 44px rgba(26, 25, 23, 0.18);
+  /* header tightens; drop the autosave + breadcrumb tail to fit */
+  .topbar {
+    padding: 10px 12px;
+    gap: 8px;
   }
-  .side {
-    left: 0;
-    transform: translateX(-100%);
+  .topbar-name {
+    font-size: 14px;
   }
-  .side.open {
-    transform: translateX(0);
+  .topbar-div,
+  .crumb,
+  .autosave,
+  .topbar-published {
+    display: none;
   }
-  .panel {
-    display: flex; /* re-enable: the ≤1100 rule sets display:none */
-    right: 0;
-    left: auto;
-    transform: translateX(100%);
-    border-left: 1px solid var(--line);
+  .topbar-r {
+    gap: 8px;
   }
-  .panel.open {
-    transform: translateX(0);
+  .ghost-btn,
+  .primary-btn {
+    padding: 8px 11px;
+    font-size: 12.5px;
   }
 
-  .drawer-backdrop {
+  /* the two columns become a single full-width swappable view */
+  .body {
     display: block;
-    position: fixed;
+    position: relative;
+  }
+  .chat-col,
+  .preview-col {
+    position: absolute;
     inset: 0;
-    background: rgba(26, 25, 23, 0.34);
-    backdrop-filter: blur(2px);
-    z-index: 35;
-    animation: fade 0.2s ease both;
+    border-right: none;
+  }
+  .body.view-chat .preview-col {
+    display: none;
+  }
+  .body.view-preview .chat-col {
+    display: none;
+  }
+  .preview-back {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    margin: 10px 0 0 14px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    background: transparent;
+    border: none;
+    cursor: pointer;
   }
 
-  /* tighten the chat chrome for narrow screens */
-  .brand {
-    padding: 12px 14px;
-    gap: 10px;
-  }
-  /* let the title truncate rather than push the panel button off-screen */
-  .brand .name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .brand-menu,
-  .brand-panel {
-    flex: none;
+  .panel {
+    width: 88vw;
   }
   .panel-head {
     align-items: center;
   }
   .steps {
-    padding: 9px 12px;
-    gap: 4px;
+    padding: 8px 10px;
+    gap: 2px;
   }
   .thread {
     padding: 18px 14px 28px;
@@ -1542,6 +2649,12 @@ body {
   }
   .bubble {
     max-width: 100%;
+  }
+  .preview-scroll {
+    padding: 16px 12px 22px;
+  }
+  .preview-surface {
+    padding: 22px 18px 26px;
   }
   .draft,
   .seo {
@@ -1564,4 +2677,458 @@ body {
   .sheet h1 {
     font-size: 22px;
   }
+}
+
+/* ── §02 confirmation checklist card (これでいいですか？ → OK / 直したい) ──── */
+.confirm {
+  margin-top: 8px;
+  max-width: 460px;
+  background: var(--ai-wash);
+  border: 1px solid var(--ai);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.confirm-h {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ai-ink);
+  margin-bottom: 12px;
+}
+.confirm-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.confirm-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.confirm-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ai);
+  color: #fff;
+}
+.confirm-check svg {
+  width: 12px;
+  height: 12px;
+}
+.confirm-t {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.confirm-label {
+  color: var(--ink-faint);
+  font-size: 12px;
+  min-width: 60px;
+}
+.confirm-val {
+  color: var(--ink);
+  font-weight: 500;
+}
+.confirm-btns {
+  display: flex;
+  gap: 8px;
+}
+.confirm-ok {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.confirm-ok:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.confirm-edit {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.confirm-edit:hover:not(:disabled) {
+  border-color: var(--ink-faint);
+}
+.confirm-ok:disabled,
+.confirm-edit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── §03 "AI is working" feedback ───────────────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+/* shimmer the chat status text (Claude/Gemini-style "working" feel) */
+.status > span:last-child {
+  background: linear-gradient(90deg, var(--ink-soft) 30%, var(--ai) 50%, var(--ink-soft) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+/* one-time uploaded-image card shown inline in the chat flow */
+.upload-card.inflow {
+  margin: 6px 0 2px;
+  max-width: 280px;
+}
+
+/* preview-pane "作成中" loader (blinking badge + shimmer skeleton) */
+.preview-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 2px;
+}
+.pl-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 999px;
+  padding: 6px 13px;
+  margin-bottom: 4px;
+  animation: badge-blink 1.4s ease-in-out infinite;
+}
+.pl-spark {
+  display: inline-block;
+  animation: spin 2.4s linear infinite;
+}
+.sk {
+  background: linear-gradient(
+    90deg,
+    var(--line-soft) 25%,
+    var(--line) 38%,
+    var(--line-soft) 54%
+  );
+  background-size: 200% 100%;
+  border-radius: 7px;
+  animation: shimmer 1.5s linear infinite;
+}
+.pl-line {
+  height: 13px;
+}
+.pl-title {
+  height: 26px;
+  width: 70%;
+  margin: 4px 0;
+}
+.pl-block {
+  height: 150px;
+  width: 100%;
+  border-radius: 10px;
+}
+.pl-hint {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.w35 {
+  width: 35%;
+}
+.w50 {
+  width: 50%;
+}
+.w60 {
+  width: 60%;
+}
+.w80 {
+  width: 80%;
+}
+.w85 {
+  width: 85%;
+}
+.w90 {
+  width: 90%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status > span:last-child,
+  .pl-badge,
+  .pl-spark,
+  .sk {
+    animation: none;
+  }
+  .status > span:last-child {
+    -webkit-text-fill-color: var(--ink-soft);
+  }
+}
+
+/* ── §06 タイトル設定 modal ──────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(26, 25, 23, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fade 0.18s ease both;
+}
+.ts-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(26, 25, 23, 0.28);
+  animation: rise 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.ts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ts-step {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.ts-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+.ts-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+.ts-x {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ts-x:hover {
+  background: var(--line-soft);
+  color: var(--ink);
+}
+.ts-body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ts-row {
+  display: flex;
+  gap: 12px;
+}
+.ts-row .ts-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.ts-flabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.ts-count {
+  font-weight: 500;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ts-count.over {
+  color: var(--warn);
+}
+.ts-input,
+.ts-textarea {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ts-input.mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 13px;
+}
+.ts-textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+.ts-input:focus,
+.ts-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+.ts-preview {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.ts-preview-tag {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+.ts-snip-url {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.ts-snip-title {
+  font-size: 17px;
+  color: var(--accent-ink);
+  line-height: 1.4;
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+.ts-snip-desc {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.ts-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 20px;
+  border-top: 1px solid var(--line);
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+}
+
+/* §07 schedule options */
+.sch-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 13px 15px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sch-opt:hover {
+  border-color: var(--ink-faint);
+}
+.sch-opt.on {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.sch-radio {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  position: relative;
+}
+.sch-opt.on .sch-radio {
+  border-color: var(--accent);
+}
+.sch-opt.on .sch-radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sch-opt-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sch-opt-h {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.sch-opt-d {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.sch-when {
+  padding: 4px 2px 0;
+}
+.sch-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.sch-confirm-when {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 8px;
+  padding: 7px 11px;
+}
+.sched-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-radius: 5px;
+  padding: 1px 7px;
+  vertical-align: middle;
 }

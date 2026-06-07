@@ -273,11 +273,13 @@ export async function runTool(
     };
 
     emit({ type: "draft", draft });
-    // Persist the assembled draft in the tool result so publish can reference it.
+    // Persist the assembled draft in the tool result so later turns can reference
+    // it (e.g. seo_analyze, revisions). Publishing is done by the USER on the
+    // preview (client-side, /api/publish) — there is no publish tool.
     return {
       content: JSON.stringify({
         __draft: draft,
-        note: "Draft preview shown to the user. Note the title in one short line and ask for approval; once approved call publish_blog_post (no arguments). For changes, call propose_blog_post again with a revision_note.",
+        note: "Draft preview is now shown in the right pane. There is NO publish tool — the user publishes from the preview themselves. For changes, call propose_blog_post again with a revision_note.",
       }),
       isError: false,
     };
