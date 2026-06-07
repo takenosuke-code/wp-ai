@@ -2108,6 +2108,35 @@ body {
   padding: 4px 10px;
   white-space: nowrap;
 }
+.seo-okbadge.neutral {
+  color: var(--ink-soft);
+  background: var(--line-soft);
+}
+.seo-okbadge.down {
+  color: var(--ink-soft);
+  background: var(--line-soft);
+}
+.kw-optimize {
+  margin-top: 12px;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ai);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.kw-optimize:hover:not(:disabled) {
+  background: var(--ai-ink);
+}
+.kw-optimize:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .seo-score-stats {
   display: flex;
   gap: 30px;

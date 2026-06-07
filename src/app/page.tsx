@@ -538,7 +538,9 @@ function SeoScreen({
   draftTitle,
   stepsDone,
   selectedKw,
+  delta,
   onToggleKw,
+  onOptimize,
   onBack,
   onProceed,
 }: {
@@ -546,7 +548,9 @@ function SeoScreen({
   draftTitle: string;
   stepsDone: number[];
   selectedKw: string[];
+  delta: number | null;
   onToggleKw: (term: string) => void;
+  onOptimize: () => void;
   onBack: () => void;
   onProceed: () => void;
 }) {
@@ -621,7 +625,13 @@ function SeoScreen({
                 <div className="seo-card-t">SEOスコア</div>
                 <div className="seo-card-sub">検索エンジンからの見つけやすさ</div>
               </div>
-              <span className="seo-okbadge">✓ AIチェック済み</span>
+              {delta != null && delta > 0 ? (
+                <span className="seo-okbadge">✓ +{delta} 改善されました</span>
+              ) : delta != null && delta < 0 ? (
+                <span className="seo-okbadge down">{delta} 低下</span>
+              ) : (
+                <span className="seo-okbadge neutral">✓ AIチェック済み</span>
+              )}
             </div>
             <div className="seo-score">
               <ScoreRing score={report.score} />
@@ -678,6 +688,13 @@ function SeoScreen({
                 );
               })}
             </ul>
+            <button
+              className="kw-optimize"
+              onClick={onOptimize}
+              disabled={selectedKw.length === 0}
+            >
+              選択したキーワードで記事を最適化 →
+            </button>
           </div>
 
           {/* CARD 03 — checks */}
@@ -1174,6 +1191,10 @@ export default function Page() {
   const [seoReport, setSeoReport] = useState<SeoReport | null>(null);
   const [seoOpen, setSeoOpen] = useState(false);
   const [seoKw, setSeoKw] = useState<string[]>([]);
+  // Score delta vs the previous SEO check (drives "+N 改善されました"); the ref
+  // survives re-renders so we can compare across checks in a conversation.
+  const [seoDelta, setSeoDelta] = useState<number | null>(null);
+  const seoScoreRef = useRef<number | null>(null);
   const chatFileRef = useRef<HTMLInputElement>(null);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
@@ -1270,6 +1291,8 @@ export default function Page() {
     setSeoReport(null);
     setSeoOpen(false);
     setSeoKw([]);
+    setSeoDelta(null);
+    seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
@@ -1304,6 +1327,8 @@ export default function Page() {
     setSeoReport(null);
     setSeoOpen(false);
     setSeoKw([]);
+    setSeoDelta(null);
+    seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
@@ -1494,6 +1519,10 @@ export default function Page() {
           } else if (evt.type === "seo") {
             // Open the dedicated SEO screen; pre-select the top 2 keyword
             // candidates (matches the mockup's "2つ選択中"). Drop a chat marker.
+            // Delta vs the previous check → "+N 改善されました".
+            const prev = seoScoreRef.current;
+            setSeoDelta(prev != null ? evt.report.score - prev : null);
+            seoScoreRef.current = evt.report.score;
             setSeoReport(evt.report);
             setSeoKw((evt.report.keywords ?? []).slice(0, 2).map((k: SeoKeyword) => k.term));
             setSeoOpen(true);
@@ -1640,7 +1669,17 @@ export default function Page() {
           draftTitle={draft?.title ?? "下書き"}
           stepsDone={stepsDone}
           selectedKw={seoKw}
+          delta={seoDelta}
           onToggleKw={toggleSeoKw}
+          onOptimize={() => {
+            if (seoKw.length === 0) return;
+            setSeoOpen(false);
+            send(
+              `選択したキーワード「${seoKw.join(
+                "」「"
+              )}」を意識して、タイトル・見出し・本文に自然に反映する形で記事を最適化してください。`
+            );
+          }}
           onBack={() => setSeoOpen(false)}
           onProceed={() => {
             setSeoOpen(false);
