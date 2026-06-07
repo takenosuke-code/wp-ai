@@ -41,6 +41,9 @@ type ChatMsg = {
   // pane); we drop a lightweight marker bubble in the chat instead.
   draftMarker?: boolean;
   seo?: SeoReport;
+  // §04: SEO results open a dedicated full-screen view; the chat keeps a marker
+  // bubble with a button to re-open it.
+  seoMarker?: boolean;
   // §02: the "これでいいですか？" checklist card shown before drafting (OK/直したい)
   confirm?: ConfirmData;
 };
@@ -507,6 +510,260 @@ function SeoCard({ report }: { report: SeoReport }) {
   );
 }
 
+// §04 dedicated full-screen SEO view (the proposal's "Step-by-Step" SEO screen):
+// a large left step sidebar + a 4-card layout (score / checks / keywords / comp).
+const SEO_STEP_ICONS = [
+  "M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z", // 内容
+  "M3 3h18v18H3z M3 16l5-5 4 4 3-3 6 6", // 画像
+  "M12 3v18 M3 12h18 M5.5 5.5l13 13 M18.5 5.5l-13 13", // AI要約
+  "M3 21h18 M7 21v-8 M12 21V7 M17 21v-5", // SEO
+  "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", // プレビュー
+  "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z", // タイトル
+  "M3 5h18v16H3z M3 9h18 M8 3v4 M16 3v4", // スケジュール
+  "M13 2L3 14h7l-1 8 10-12h-7l1-8z", // 公開
+];
+function Ic({ d, sw = 1.8 }: { d: string; sw?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+      {d.split(" M").map((p, i) => (
+        <path key={i} d={i ? "M" + p : p} />
+      ))}
+    </svg>
+  );
+}
+const MAGNIFY = "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M21 21l-4.3-4.3";
+
+function SeoScreen({
+  report,
+  draftTitle,
+  stepsDone,
+  selectedKw,
+  onToggleKw,
+  onBack,
+  onProceed,
+}: {
+  report: SeoReport;
+  draftTitle: string;
+  stepsDone: number[];
+  selectedKw: string[];
+  onToggleKw: (term: string) => void;
+  onBack: () => void;
+  onProceed: () => void;
+}) {
+  return (
+    <div className="seo-screen">
+      <aside className="seo-side">
+        <div className="seo-side-brand">
+          <span className="mark" />
+          <span className="seo-side-name">
+            Loop <span>AI 投稿アシスタント</span>
+          </span>
+        </div>
+        <div className="seo-side-draft">
+          <div className="seo-side-draft-tag">下書き</div>
+          <div className="seo-side-draft-title">{draftTitle}</div>
+          <div className="seo-side-draft-save">
+            <span className="autosave-dot" />
+            自動保存済み
+          </div>
+        </div>
+        <div className="seo-side-flow">投稿までの流れ</div>
+        <ol className="seo-steps">
+          {STEPS.map((label, i) => {
+            const n = i + 1;
+            const state = n === 4 ? "active" : stepsDone.includes(n) ? "done" : "todo";
+            return (
+              <li key={n} className={`seo-step ${state}`}>
+                <span className="seo-step-ic">
+                  {state === "done" ? <Ic d="M5 12l4.5 4.5L19 6" sw={2.4} /> : <Ic d={SEO_STEP_ICONS[i]} />}
+                </span>
+                <span className="seo-step-txt">
+                  <span className="seo-step-n">STEP {String(n).padStart(2, "0")}</span>
+                  <span className="seo-step-label">{label}</span>
+                </span>
+                {state === "active" && <span className="seo-step-chev">›</span>}
+              </li>
+            );
+          })}
+        </ol>
+      </aside>
+
+      <div className="seo-main">
+        <div className="seo-main-head">
+          <div className="seo-main-headl">
+            <div className="seo-main-step">STEP 04 / 08</div>
+            <h1 className="seo-main-title">
+              SEOチェック・キーワード提案
+              <span className="seo-main-sub">
+                {" "}
+                — 検索で見つけてもらいやすい記事になっているか確認しましょう
+              </span>
+            </h1>
+          </div>
+          <div className="seo-main-actions">
+            <button className="ghost-btn" onClick={onBack}>
+              ‹ 戻る
+            </button>
+            <button className="primary-btn" onClick={onProceed}>
+              プレビューへ進む →
+            </button>
+          </div>
+        </div>
+
+        <div className="seo-cards">
+          {/* CARD 01 — score */}
+          <div className="seo-card">
+            <div className="seo-card-h">
+              <span className="seo-card-ic">
+                <Ic d="M3 21h18 M7 21v-8 M12 21V7 M17 21v-5" />
+              </span>
+              <div className="seo-card-ht">
+                <div className="seo-card-t">SEOスコア</div>
+                <div className="seo-card-sub">検索エンジンからの見つけやすさ</div>
+              </div>
+              <span className="seo-okbadge">✓ AIチェック済み</span>
+            </div>
+            <div className="seo-score">
+              <ScoreRing score={report.score} />
+              <div className="seo-score-meta">
+                <div className="muted">主キーワード</div>
+                <div className="kw">「{report.keyword}」</div>
+                <div className="seo-score-stats">
+                  <div>
+                    <div className="muted">月間検索数</div>
+                    <div className="seo-stat">{report.monthlySearches}</div>
+                  </div>
+                  <div>
+                    <div className="muted">競合の強さ</div>
+                    <div className="seo-stat">
+                      <span className={compClass(report.competition)}>{report.competition}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 02 — keyword candidates (selectable) */}
+          <div className="seo-card">
+            <div className="seo-card-h">
+              <span className="seo-card-ic">
+                <Ic d={MAGNIFY} />
+              </span>
+              <div className="seo-card-ht">
+                <div className="seo-card-t">キーワード候補</div>
+                <div className="seo-card-sub">{selectedKw.length}つ選択中・タップで切り替え</div>
+              </div>
+            </div>
+            <ul className="seo-kwlist">
+              {report.keywords.map((k, i) => {
+                const on = selectedKw.includes(k.term);
+                return (
+                  <li key={i}>
+                    <button
+                      className={`kw-row ${on ? "on" : ""}`}
+                      onClick={() => onToggleKw(k.term)}
+                      aria-pressed={on}
+                    >
+                      <span className={`kw-check ${on ? "on" : ""}`} aria-hidden="true">
+                        {on && <Ic d="M5 12l4.5 4.5L19 6" sw={3} />}
+                      </span>
+                      <span className="kw-term">{k.term}</span>
+                      {k.volume && <span className="kw-vol muted">{k.volume}</span>}
+                      {k.competition && (
+                        <span className={compClass(k.competition)}>競合 {k.competition}</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* CARD 03 — checks */}
+          <div className="seo-card">
+            <div className="seo-card-h">
+              <span className="seo-card-ic">
+                <Ic d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </span>
+              <div className="seo-card-ht">
+                <div className="seo-card-t">チェック項目</div>
+                <div className="seo-card-sub">AIが自動で確認しました</div>
+              </div>
+            </div>
+            <ul className="seo-checks">
+              {report.checks.map((c, i) => (
+                <li key={i} className={`chk ${c.status}`}>
+                  <span className="chk-i">
+                    {c.status === "ok" ? "✓" : c.status === "warn" ? "△" : "＋"}
+                  </span>
+                  <span className="chk-t">
+                    {c.label}
+                    {c.note && <span className="chk-note">{c.note}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* CARD 04 — competitors */}
+          <div className="seo-card">
+            <div className="seo-card-h">
+              <span className="seo-card-ic">
+                <Ic d={MAGNIFY} />
+              </span>
+              <div className="seo-card-ht">
+                <div className="seo-card-t">競合ブログを分析</div>
+                <div className="seo-card-sub">同じキーワードで上位の記事</div>
+              </div>
+            </div>
+            <ul className="seo-complist">
+              {report.competitors.map((c, i) => {
+                const href =
+                  typeof c.url === "string" && /^https?:\/\//i.test(c.url.trim())
+                    ? c.url.trim()
+                    : undefined;
+                return (
+                  <li key={i}>
+                    <span className="cmp-rank">{i + 1}</span>
+                    <span className="cmp-body">
+                      <span className="cmp-title">
+                        {href ? (
+                          <a href={href} target="_blank" rel="noreferrer noopener">
+                            {c.title}
+                          </a>
+                        ) : (
+                          c.title
+                        )}
+                      </span>
+                      <span className="cmp-meta muted">
+                        {c.domain}
+                        {c.words != null &&
+                          ` · ${typeof c.words === "number" ? `${c.words}語` : c.words}`}
+                      </span>
+                    </span>
+                    <span className="cmp-badge">SEO</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+
+        {report.recommendation && (
+          <div className="seo-rec">
+            <span className="seo-rec-mark">AIの提案</span>
+            {report.recommendation}
+          </div>
+        )}
+        <div className="seo-foot muted">
+          ※検索数・難易度は推定値です。競合記事は実際の検索結果に基づきます。
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Interactive draft preview: per-section image "+" slots + client publish ──
 type SlotImage = { url: string; alt: string };
 // Images uploaded in the chat composer. They carry display metadata for the chat
@@ -912,6 +1169,11 @@ export default function Page() {
   const [heldConfirm, setHeldConfirm] = useState<{ text: string; confirm: ConfirmData } | null>(
     null
   );
+  // §04 dedicated SEO screen: the latest report, whether the full-screen view is
+  // open, and which keyword candidates the user has selected to target.
+  const [seoReport, setSeoReport] = useState<SeoReport | null>(null);
+  const [seoOpen, setSeoOpen] = useState(false);
+  const [seoKw, setSeoKw] = useState<string[]>([]);
   const chatFileRef = useRef<HTMLInputElement>(null);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
@@ -1005,6 +1267,9 @@ export default function Page() {
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
+    setSeoReport(null);
+    setSeoOpen(false);
+    setSeoKw([]);
     setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
@@ -1036,6 +1301,9 @@ export default function Page() {
     setChatImages([]);
     setImageAsked(false);
     setHeldConfirm(null);
+    setSeoReport(null);
+    setSeoOpen(false);
+    setSeoKw([]);
     setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
@@ -1224,7 +1492,12 @@ export default function Page() {
             markDone(1, 3);
             reachStep(5);
           } else if (evt.type === "seo") {
-            setMessages((m) => [...m, { role: "assistant", text: "", seo: evt.report }]);
+            // Open the dedicated SEO screen; pre-select the top 2 keyword
+            // candidates (matches the mockup's "2つ選択中"). Drop a chat marker.
+            setSeoReport(evt.report);
+            setSeoKw((evt.report.keywords ?? []).slice(0, 2).map((k: SeoKeyword) => k.term));
+            setSeoOpen(true);
+            setMessages((m) => [...m, { role: "assistant", text: "", seoMarker: true }]);
             setStatus(null);
             markDone(4); // SEOチェック done (it runs against the existing draft)
           } else if (evt.type === "blog") {
@@ -1276,6 +1549,9 @@ export default function Page() {
 
   const removeChatImage = (i: number) =>
     setChatImages((imgs) => imgs.filter((_, j) => j !== i));
+
+  const toggleSeoKw = (term: string) =>
+    setSeoKw((k) => (k.includes(term) ? k.filter((t) => t !== term) : [...k, term]));
 
   // Resolve the image step (skip or after adding) → reveal the held recap card.
   function resolveImageStep() {
@@ -1358,6 +1634,22 @@ export default function Page() {
 
   return (
     <div className="app">
+      {seoOpen && seoReport && (
+        <SeoScreen
+          report={seoReport}
+          draftTitle={draft?.title ?? "下書き"}
+          stepsDone={stepsDone}
+          selectedKw={seoKw}
+          onToggleKw={toggleSeoKw}
+          onBack={() => setSeoOpen(false)}
+          onProceed={() => {
+            setSeoOpen(false);
+            markDone(4);
+            reachStep(5);
+            setMobileView("preview");
+          }}
+        />
+      )}
       {(sideOpen || panelOpen) && (
         <div
           className="drawer-backdrop"
@@ -1491,9 +1783,10 @@ export default function Page() {
 
               {messages.map((m, i) => (
                 <div key={i} className={`turn ${m.role}`}>
-                  {m.role === "assistant" && (m.text || (!m.draftMarker && !m.seo)) && (
-                    <div className="who">アシスタント</div>
-                  )}
+                  {m.role === "assistant" &&
+                    (m.text || (!m.draftMarker && !m.seo && !m.seoMarker)) && (
+                      <div className="who">アシスタント</div>
+                    )}
                   {m.text && <div className={`bubble ${m.role}`}>{m.text}</div>}
                   {m.draftMarker && (
                     <button className="draft-chip" onClick={() => setMobileView("preview")}>
@@ -1508,6 +1801,14 @@ export default function Page() {
                     />
                   )}
                   {m.seo && <SeoCard report={m.seo} />}
+                  {m.seoMarker && (
+                    <button
+                      className="draft-chip"
+                      onClick={() => seoReport && setSeoOpen(true)}
+                    >
+                      ✦ SEOチェックが完了しました。結果を見る
+                    </button>
+                  )}
                 </div>
               ))}
 
