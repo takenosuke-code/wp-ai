@@ -806,66 +806,48 @@ function PreviewPane({
         </div>
       </div>
 
-      {/* publish bar pinned at the bottom of the pane */}
-      {!published ? (
-        <div className="pubbar">
-          {!confirming ? (
-            <>
-              <span className="pub-note muted">
-                {imageCount > 0 ? `画像 ${imageCount} 枚を配置済み` : "画像はそのまま公開（任意）"}
-              </span>
-              <button
-                className="pub-btn"
-                onClick={() => {
-                  setConfirming(true);
-                  onStep(7); // entering 公開 (confirm dialog open)
-                }}
-              >
-                公開する →
-              </button>
-            </>
-          ) : (
-            <div className="pub-confirm">
-              <div className="pub-confirm-q">本当に公開しますか？</div>
-              <dl className="pub-summary">
-                <div>
-                  <dt>タイトル</dt>
-                  <dd>{draft.title}</dd>
-                </div>
-                <div>
-                  <dt>カテゴリ</dt>
-                  <dd>{draft.category}</dd>
-                </div>
-                <div>
-                  <dt>公開日時</dt>
-                  <dd>今すぐ公開（即時）</dd>
-                </div>
-                {imageCount > 0 && (
-                  <div>
-                    <dt>画像</dt>
-                    <dd>{imageCount} 枚</dd>
-                  </div>
-                )}
-              </dl>
-              <p className="pub-confirm-note">
-                公開すると右の一覧と公開サイトにすぐ表示されます。
-              </p>
-              <div className="pub-confirm-btns">
-                <button className="pub-btn" onClick={doPublish} disabled={publishing}>
-                  {publishing ? "公開中…" : "公開する"}
-                </button>
-                <button className="pub-cancel" onClick={() => setConfirming(false)} disabled={publishing}>
-                  キャンセル
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
+      {/* Publish is triggered by the HEADER 公開する button (no bottom button).
+          The confirm dialog and the done message still anchor at the bottom. */}
+      {published ? (
         <div className="pubbar">
           <span className="pub-done">✓ 公開しました。右の「公開済み」一覧に表示されています。</span>
         </div>
-      )}
+      ) : confirming ? (
+        <div className="pubbar">
+          <div className="pub-confirm">
+            <div className="pub-confirm-q">本当に公開しますか？</div>
+            <dl className="pub-summary">
+              <div>
+                <dt>タイトル</dt>
+                <dd>{draft.title}</dd>
+              </div>
+              <div>
+                <dt>カテゴリ</dt>
+                <dd>{draft.category}</dd>
+              </div>
+              <div>
+                <dt>公開日時</dt>
+                <dd>今すぐ公開（即時）</dd>
+              </div>
+              {imageCount > 0 && (
+                <div>
+                  <dt>画像</dt>
+                  <dd>{imageCount} 枚</dd>
+                </div>
+              )}
+            </dl>
+            <p className="pub-confirm-note">公開すると右の一覧と公開サイトにすぐ表示されます。</p>
+            <div className="pub-confirm-btns">
+              <button className="pub-btn" onClick={doPublish} disabled={publishing}>
+                {publishing ? "公開中…" : "公開する"}
+              </button>
+              <button className="pub-cancel" onClick={() => setConfirming(false)} disabled={publishing}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
