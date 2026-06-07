@@ -2585,6 +2585,10 @@ body {
   .topbar-name {
     font-size: 14px;
   }
+  /* phone: shorten the brand to just "Loop AI" */
+  .topbar-name-full {
+    display: none;
+  }
   .topbar-div,
   .crumb,
   .autosave,
