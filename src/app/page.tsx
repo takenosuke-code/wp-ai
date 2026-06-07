@@ -900,9 +900,14 @@ export default function Page() {
   // as cards in the chat and are auto-placed into the draft (see PreviewPane).
   const [chatImages, setChatImages] = useState<ChatImage[]>([]);
   const [chatUploading, setChatUploading] = useState(false);
-  // §03: once the draft exists we ask 「画像を追加しますか？」. Skipping is a pure
-  // client action (no API call); it just resolves this prompt.
+  // §03 image step: after gathering, BEFORE the recap, we ask 「画像を追加しますか？」.
+  // `imageAsked` = the step has been resolved (added or skipped). `heldConfirm`
+  // is the model's recap card, held back until images are resolved — so the user
+  // sees: gather → image ask → recap. Skipping is pure client-side (no API call).
   const [imageAsked, setImageAsked] = useState(false);
+  const [heldConfirm, setHeldConfirm] = useState<{ text: string; confirm: ConfirmData } | null>(
+    null
+  );
   const chatFileRef = useRef<HTMLInputElement>(null);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
@@ -995,6 +1000,7 @@ export default function Page() {
     setPublishConfirming(false);
     setChatImages([]);
     setImageAsked(false);
+    setHeldConfirm(null);
     setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
@@ -1025,6 +1031,7 @@ export default function Page() {
     setPublishConfirming(false);
     setChatImages([]);
     setImageAsked(false);
+    setHeldConfirm(null);
     setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
@@ -1119,14 +1126,20 @@ export default function Page() {
         setStreaming("");
         setStatus(null);
         setBusy(false);
-        if (body || options.length || confirm) {
-          setMessages((m) => [...m, { role: "assistant", text: body, options, confirm }]);
-        }
-        // §02/step bar: the confirm card means content is gathered (1 done) and
-        // the AI is at the 要約・確認 step (3). Until then we stay on 内容を伝える.
-        if (confirm) {
-          markDone(1);
-          reachStep(3);
+        if (confirm && !imageAsked) {
+          // Content is gathered. Insert the image step BEFORE the recap: hold the
+          // recap and show 「画像を追加しますか？」 first (gather → 画像 → recap).
+          markDone(1); // 内容を伝える done
+          reachStep(2); // 画像をアップ now in progress
+          setHeldConfirm({ text: body, confirm });
+        } else {
+          if (body || options.length || confirm) {
+            setMessages((m) => [...m, { role: "assistant", text: body, options, confirm }]);
+          }
+          if (confirm) {
+            markDone(1);
+            reachStep(3); // recap shown directly (image step already resolved)
+          }
         }
         loadConversations(); // refresh sidebar (title / order)
         rafRef.current = null;
@@ -1249,8 +1262,7 @@ export default function Page() {
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "image";
       setChatImages((imgs) => [...imgs, { url: data.url, alt, name: file.name, size: file.size }]);
-      setImageAsked(true); // an image was added → the 画像 prompt is resolved
-      markDone(2); // 画像をアップ
+      markDone(2); // 画像をアップ (resolution is explicit via the proceed button)
     } catch {
       // surfaced inline elsewhere; keep the composer quiet on failure
     } finally {
@@ -1260,6 +1272,18 @@ export default function Page() {
 
   const removeChatImage = (i: number) =>
     setChatImages((imgs) => imgs.filter((_, j) => j !== i));
+
+  // Resolve the image step (skip or after adding) → reveal the held recap card.
+  function resolveImageStep() {
+    setImageAsked(true);
+    markDone(2);
+    reachStep(3);
+    if (heldConfirm) {
+      const hc = heldConfirm;
+      setMessages((m) => [...m, { role: "assistant", text: hc.text, confirm: hc.confirm }]);
+      setHeldConfirm(null);
+    }
+  }
 
   const last = messages[messages.length - 1];
   const choices =
@@ -1505,11 +1529,11 @@ export default function Page() {
                 </div>
               )}
 
-              {draft && !imageAsked && chatImages.length === 0 && (
+              {heldConfirm && !imageAsked && (
                 <div className="img-ask">
                   <div className="img-ask-h">記事に画像を追加しますか？</div>
                   <div className="img-ask-sub">
-                    追加すると、AIが内容を見て最適な位置に配置します。
+                    追加すると、記事の作成時にAIが内容を見て最適な位置に配置します。スキップしても大丈夫です。
                   </div>
                   <div className="img-ask-btns">
                     <button
@@ -1517,16 +1541,14 @@ export default function Page() {
                       onClick={() => chatFileRef.current?.click()}
                       disabled={chatUploading}
                     >
-                      {chatUploading ? "アップロード中…" : "画像を追加する"}
+                      {chatUploading
+                        ? "アップロード中…"
+                        : chatImages.length > 0
+                        ? "さらに追加"
+                        : "画像を追加する"}
                     </button>
-                    <button
-                      className="img-ask-no"
-                      onClick={() => {
-                        setImageAsked(true);
-                        markDone(2);
-                      }}
-                    >
-                      画像なしで進む
+                    <button className="img-ask-no" onClick={resolveImageStep}>
+                      {chatImages.length > 0 ? "この画像で進む" : "画像なしで進む"}
                     </button>
                   </div>
                 </div>
