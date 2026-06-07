@@ -579,6 +579,8 @@ function PreviewPane({
     distributeImages(chatImages, sections.length)
   );
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
+  // When set, the next picked file REPLACES this image instead of appending.
+  const [replaceTarget, setReplaceTarget] = useState<{ slot: number; img: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -596,6 +598,14 @@ function PreviewPane({
 
   function pick(slotIdx: number) {
     if (uploading || published) return;
+    setReplaceTarget(null);
+    setActiveSlot(slotIdx);
+    fileRef.current?.click();
+  }
+
+  function replace(slotIdx: number, imgIdx: number) {
+    if (uploading || published) return;
+    setReplaceTarget({ slot: slotIdx, img: imgIdx });
     setActiveSlot(slotIdx);
     fileRef.current?.click();
   }
@@ -614,13 +624,22 @@ function PreviewPane({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || draft.title;
-      setSlots((s) => s.map((arr, i) => (i === slotIdx ? [...arr, { url: data.url, alt }] : arr)));
+      const next = { url: data.url, alt };
+      if (replaceTarget) {
+        const { slot, img } = replaceTarget;
+        setSlots((s) =>
+          s.map((arr, i) => (i === slot ? arr.map((im, j) => (j === img ? next : im)) : arr))
+        );
+      } else {
+        setSlots((s) => s.map((arr, i) => (i === slotIdx ? [...arr, next] : arr)));
+      }
       onStep(2); // 画像をアップ: an image was placed
     } catch (err: any) {
       setError(err?.message ?? "アップロードに失敗しました");
     } finally {
       setUploading(false);
       setActiveSlot(null);
+      setReplaceTarget(null);
     }
   }
 
@@ -677,8 +696,6 @@ function PreviewPane({
   }
 
   const imageCount = slots.reduce((n, arr) => n + arr.length, 0);
-  // First placed image (if any) acts as the hero/featured image area.
-  const heroUrl = slots.find((arr) => arr.length)?.[0]?.url;
   const readMins = Math.max(1, Math.round(draft.content.replace(/\s/g, "").length / 500));
 
   return (
@@ -733,50 +750,55 @@ function PreviewPane({
             Loop編集部 / 山田 真理子 ・ 約{readMins}分 ・ 公開予定
           </div>
 
-          {/* featured image area */}
-          {heroUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="preview-hero" src={heroUrl} alt={draft.title} />
-          ) : (
+          {/* Eyecatch hint only while there are no images at all; once images
+              exist they render full-size inside their own sections below. */}
+          {imageCount === 0 && (
             <div className="preview-hero-empty">
               アイキャッチ案: {draft.featuredImagePrompt}
             </div>
           )}
 
-          {/* body with per-section "+" image slots */}
+          {/* body: each section + its full-size images + an "add more" affordance */}
           {sections.map((sec, i) => (
             <div key={i}>
               <div className="prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(sec) }} />
-              <div className="imgslot">
-                {slots[i].map((im, j) => (
-                  <div key={j} className="thumb">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={im.url} alt={im.alt} />
-                    {!published && (
-                      <button className="thumb-x" onClick={() => removeImg(i, j)} aria-label="画像を削除">
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {!published && (
-                  <button
-                    className="add-img"
-                    onClick={() => pick(i)}
-                    disabled={uploading}
-                    title="このセクションに画像を追加"
-                  >
-                    {uploading && activeSlot === i ? (
-                      <span className="add-spin" />
-                    ) : (
-                      <>
-                        <span className="add-plus">＋</span>
-                        画像を追加
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              {slots[i].length > 0 && (
+                <div className="sec-images">
+                  {slots[i].map((im, j) => (
+                    <figure key={j} className="sec-img">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={im.url} alt={im.alt} />
+                      {!published && (
+                        <div className="sec-img-tools">
+                          <button onClick={() => replace(i, j)} disabled={uploading}>
+                            差し替え
+                          </button>
+                          <button onClick={() => removeImg(i, j)} disabled={uploading}>
+                            削除
+                          </button>
+                        </div>
+                      )}
+                    </figure>
+                  ))}
+                </div>
+              )}
+              {!published && (
+                <button
+                  className="add-more"
+                  onClick={() => pick(i)}
+                  disabled={uploading}
+                  title="このセクションに画像を追加"
+                >
+                  {uploading && activeSlot === i && !replaceTarget ? (
+                    <span className="add-spin" />
+                  ) : (
+                    <>
+                      <span className="add-plus">＋</span>
+                      {slots[i].length > 0 ? "画像をもう一枚追加" : "画像を追加"}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           ))}
 
