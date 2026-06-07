@@ -485,6 +485,18 @@ function SeoCard({ report }: { report: SeoReport }) {
 
 // ── Interactive draft preview: per-section image "+" slots + client publish ──
 type SlotImage = { url: string; alt: string };
+// Images uploaded in the chat composer (before the draft exists). They carry
+// display metadata for the chat cards and are auto-placed into the draft.
+type ChatImage = { url: string; alt: string; name: string; size: number };
+
+// Auto-place images across the draft's sections (§03 「自動配置」): one per
+// section in order; any extras pile onto the last section. The first image
+// therefore lands in section 0 and becomes the featured/hero image.
+function distributeImages(imgs: SlotImage[], sectionCount: number): SlotImage[][] {
+  const slots: SlotImage[][] = Array.from({ length: Math.max(sectionCount, 1) }, () => []);
+  imgs.forEach((im, i) => slots[Math.min(i, slots.length - 1)].push(im));
+  return slots;
+}
 
 // Split the draft body at each heading so we can offer a "+" image slot after
 // every section. Concatenating the pieces with "\n" reproduces the original body
@@ -515,6 +527,7 @@ type PreviewMode = "pc" | "mobile";
 
 function PreviewPane({
   draft,
+  chatImages,
   aiUpdating,
   confirming,
   setConfirming,
@@ -522,6 +535,7 @@ function PreviewPane({
   onPublished,
 }: {
   draft: DraftPreview;
+  chatImages: ChatImage[];
   aiUpdating: boolean;
   confirming: boolean;
   setConfirming: (v: boolean) => void;
@@ -529,7 +543,11 @@ function PreviewPane({
   onPublished: () => void;
 }) {
   const sections = useMemo(() => splitSections(draft.content), [draft.content]);
-  const [slots, setSlots] = useState<SlotImage[][]>(() => sections.map(() => []));
+  // Slots start auto-filled with the chat-uploaded images (§03 自動配置); the
+  // user can still adjust them per section below.
+  const [slots, setSlots] = useState<SlotImage[][]>(() =>
+    distributeImages(chatImages, sections.length)
+  );
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -538,13 +556,13 @@ function PreviewPane({
   const [mode, setMode] = useState<PreviewMode>("pc");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Re-init slots when the draft body changes (a revision arrives).
+  // Re-distribute when a revision arrives or new chat images are added.
   useEffect(() => {
-    setSlots(sections.map(() => []));
+    setSlots(distributeImages(chatImages, sections.length));
     setPublished(false);
     setError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.content]);
+  }, [draft.content, chatImages]);
 
   function pick(slotIdx: number) {
     if (uploading || published) return;
@@ -848,6 +866,11 @@ export default function Page() {
   // top-header "公開する →" button triggers the SAME confirm flow the pane owns.
   const [draft, setDraft] = useState<DraftPreview | null>(null);
   const [publishConfirming, setPublishConfirming] = useState(false);
+  // §03: images uploaded in the chat composer (before/while drafting). They show
+  // as cards in the chat and are auto-placed into the draft (see PreviewPane).
+  const [chatImages, setChatImages] = useState<ChatImage[]>([]);
+  const [chatUploading, setChatUploading] = useState(false);
+  const chatFileRef = useRef<HTMLInputElement>(null);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
   const [sideOpen, setSideOpen] = useState(false);
@@ -936,6 +959,7 @@ export default function Page() {
     setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
+    setChatImages([]);
     setMobileView("chat");
     setSideOpen(false);
     const res = await fetch(`/api/conversations/${id}`);
@@ -964,6 +988,7 @@ export default function Page() {
     setStepsDone([]);
     setDraft(null);
     setPublishConfirming(false);
+    setChatImages([]);
     setMobileView("chat");
     setSideOpen(false);
     textareaRef.current?.focus();
@@ -1128,11 +1153,39 @@ export default function Page() {
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // §03: ⌘+↵ (or Ctrl+Enter) sends; plain Enter inserts a newline so
+    // non-technical users can write freely without accidental sends.
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       send();
     }
   }
+
+  // §03: upload an image from the chat composer (before/while drafting). It joins
+  // the chat as a card and is auto-placed into the draft.
+  async function onChatImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setChatUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
+      const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "image";
+      setChatImages((imgs) => [...imgs, { url: data.url, alt, name: file.name, size: file.size }]);
+      markDone(2); // 画像をアップ
+    } catch {
+      // surfaced inline elsewhere; keep the composer quiet on failure
+    } finally {
+      setChatUploading(false);
+    }
+  }
+
+  const removeChatImage = (i: number) =>
+    setChatImages((imgs) => imgs.filter((_, j) => j !== i));
 
   const last = messages[messages.length - 1];
   const choices =
@@ -1378,6 +1431,28 @@ export default function Page() {
                 </div>
               )}
 
+              {chatImages.length > 0 && (
+                <div className="chat-uploads">
+                  {chatImages.map((im, i) => (
+                    <div className="upload-card" key={i}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={im.url} alt={im.alt} />
+                      <div className="upload-meta">
+                        <div className="upload-name">{im.name}</div>
+                        <div className="upload-size">JPG · {(im.size / 1048576).toFixed(1)} MB</div>
+                      </div>
+                      <button
+                        className="upload-x"
+                        onClick={() => removeChatImage(i)}
+                        aria-label="画像を削除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {choices && (
                 <div className="options">
                   {choices.map((opt, i) => (
@@ -1394,6 +1469,7 @@ export default function Page() {
           </div>
 
           <div className="composer">
+            <input ref={chatFileRef} type="file" accept="image/*" hidden onChange={onChatImage} />
             <div className="field">
               <textarea
                 ref={textareaRef}
@@ -1403,11 +1479,45 @@ export default function Page() {
                 placeholder="作りたいブログ記事を入力…"
                 rows={1}
               />
-              <button className="send" onClick={() => send()} disabled={busy || !input.trim()} aria-label="送信">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
+              {/* §03 スマート入力欄: 画像（実装）・ファイル/音声（表示のみ）・送信 */}
+              <div className="composer-bar">
+                <div className="composer-tools">
+                  <button
+                    className="tool-btn"
+                    onClick={() => chatFileRef.current?.click()}
+                    disabled={chatUploading}
+                    title="画像を追加"
+                    aria-label="画像を追加"
+                  >
+                    {chatUploading ? (
+                      <span className="add-spin" />
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    )}
+                  </button>
+                  <button className="tool-btn" disabled title="ファイル添付（近日対応）" aria-label="ファイル添付（近日対応）">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.49-8.49" />
+                    </svg>
+                  </button>
+                  <button className="tool-btn" disabled title="音声入力（近日対応）" aria-label="音声入力（近日対応）">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="12" rx="3" />
+                      <path d="M5 10a7 7 0 0 0 14 0 M12 17v4" />
+                    </svg>
+                  </button>
+                </div>
+                <span className="composer-hint">⌘ + ↵ で送信</span>
+                <button className="send" onClick={() => send()} disabled={busy || !input.trim()} aria-label="送信">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1421,6 +1531,7 @@ export default function Page() {
           {draft ? (
             <PreviewPane
               draft={draft}
+              chatImages={chatImages}
               aiUpdating={busy}
               confirming={publishConfirming}
               setConfirming={setPublishConfirming}
