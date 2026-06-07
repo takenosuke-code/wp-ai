@@ -616,6 +616,18 @@ body {
   border-color: var(--ink-faint);
 }
 
+/* the in-chat "proceed to publish" CTA — filled so it reads as the primary path */
+.opt.opt-go {
+  color: #fff;
+  background: var(--ai);
+  border-color: var(--ai);
+  font-weight: 600;
+}
+.opt.opt-go:hover {
+  background: var(--ai-ink);
+  border-color: var(--ai-ink);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {

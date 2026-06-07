@@ -2285,16 +2285,24 @@ export default function Page() {
                 </div>
               )}
 
-              {choices && (
+              {(choices || (draft && !busy && !streaming)) && (
                 <div className="options">
-                  {choices.map((opt, i) => (
+                  {choices?.map((opt, i) => (
                     <button key={i} className="opt" onClick={() => onOption(opt)}>
                       {opt}
                     </button>
                   ))}
-                  <button className="opt other" onClick={() => textareaRef.current?.focus()}>
-                    その他（自由入力）
-                  </button>
+                  {/* once a draft exists, always offer the publish path in chat too */}
+                  {draft && (
+                    <button className="opt opt-go" onClick={startPublish}>
+                      タイトル設定へ進む →
+                    </button>
+                  )}
+                  {choices && (
+                    <button className="opt other" onClick={() => textareaRef.current?.focus()}>
+                      その他（自由入力）
+                    </button>
+                  )}
                 </div>
               )}
             </div>
