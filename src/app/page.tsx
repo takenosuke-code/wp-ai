@@ -2127,9 +2127,9 @@ export default function Page() {
             className="primary-btn"
             onClick={startPublish}
             disabled={!draft}
-            title={draft ? "この記事を公開" : "下書きができると公開できます"}
+            title={draft ? "タイトル設定へ進む" : "下書きができると進めます"}
           >
-            公開する →
+            タイトル設定へ →
           </button>
         </div>
       </header>
