@@ -2068,7 +2068,9 @@ export default function Page() {
             ☰
           </button>
           <span className="mark" />
-          <span className="topbar-name">Loop AI 投稿アシスタント</span>
+          <span className="topbar-name">
+            Loop AI<span className="topbar-name-full"> 投稿アシスタント</span>
+          </span>
           <span className="topbar-div" aria-hidden="true">
             │
           </span>
