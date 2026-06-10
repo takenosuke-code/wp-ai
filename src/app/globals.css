@@ -115,6 +115,9 @@ body {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   flex: none;
+  /* single-row header: clip rather than let a too-wide button push the whole
+     page sideways (caused overlap/breakage on phones narrower than ~390px) */
+  overflow: hidden;
 }
 .topbar-l {
   display: flex;
@@ -2603,6 +2606,14 @@ body {
     padding: 8px 11px;
     font-size: 12.5px;
   }
+  /* on all phones, the secondary "公開後の見た目" button is icon-only (👁) so the
+     brand name + primary CTA always fit without clipping */
+  .topbar-r .ghost-btn .btn-label {
+    display: none;
+  }
+  .topbar-r .ghost-btn {
+    padding: 8px 10px;
+  }
 
   /* the two columns become a single full-width swappable view */
   .body {
@@ -2680,6 +2691,44 @@ body {
   }
   .sheet h1 {
     font-size: 22px;
+  }
+}
+
+/* ── Small phones (≤384px) — narrower than the design target ────────────────
+   The standard mobile layout (above) assumes ~390px+. On smaller devices the
+   header's two text buttons + the nowrap sub-labels were wider than the screen,
+   so the row overflowed and content appeared to overlap. Here we shrink to fit.
+   Devices ≥390px (incl. the common iPhone widths) are untouched. */
+@media (max-width: 384px) {
+  .topbar {
+    padding: 9px 10px;
+    gap: 6px;
+  }
+  .topbar-r {
+    gap: 6px;
+  }
+  .topbar-r .ghost-btn {
+    padding: 8px 9px;
+  }
+  .primary-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  /* drop the nowrap tail labels that pushed their rows sideways */
+  .chat-col-sub,
+  .preview-h-sub {
+    display: none;
+  }
+  .chat-col-head,
+  .preview-head {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .thread {
+    padding: 16px 11px 24px;
+  }
+  .composer {
+    padding: 10px 11px 14px;
   }
 }
 

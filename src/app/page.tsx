@@ -2106,7 +2106,7 @@ export default function Page() {
             onClick={() => setMobileView("preview")}
             title="公開後の見た目を確認"
           >
-            <span aria-hidden="true">👁</span> 公開後の見た目
+            <span aria-hidden="true">👁</span> <span className="btn-label">公開後の見た目</span>
           </button>
           <button
             className="primary-btn"
