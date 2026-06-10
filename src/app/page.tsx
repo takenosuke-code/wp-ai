@@ -1062,7 +1062,7 @@ function PreviewPane({
                   ) : (
                     <>
                       <span className="add-plus">＋</span>
-                      {slots[i].length > 0 ? "画像をもう一枚追加" : "画像を追加"}
+                      {(slots[i] ?? []).length > 0 ? "画像をもう一枚追加" : "画像を追加"}
                     </>
                   )}
                 </button>
@@ -1492,6 +1492,9 @@ export default function Page() {
   const [seoDelta, setSeoDelta] = useState<number | null>(null);
   const seoScoreRef = useRef<number | null>(null);
   const chatFileRef = useRef<HTMLInputElement>(null);
+  // The step we were on before entering the publish flow (タイトル設定 → スケジュール
+  // → 公開確認). Backing out restores it so the step bar never stays stuck on 6/7/8.
+  const stepBeforePublishRef = useRef(1);
   // Mobile-only off-canvas drawers (the two side columns). Never toggled on
   // desktop — the toggle buttons are display:none above the mobile breakpoint.
   const [sideOpen, setSideOpen] = useState(false);
@@ -1605,6 +1608,13 @@ export default function Page() {
         return { role: "user", text: m.text };
       });
       setMessages(msgs);
+      // Restore the live preview: the draft is stored in the conversation, so it
+      // survives a reload/crash instead of leaving the preview blank.
+      if (data.draft) {
+        setDraft(data.draft);
+        setStepsDone((d) => Array.from(new Set([...d, 1, 2, 3])));
+        setStep((s) => Math.max(s, 4)); // a draft exists → at least SEOチェック
+      }
     } else {
       setMessages([]);
     }
@@ -1965,8 +1975,17 @@ export default function Page() {
   function startPublish() {
     if (!draft) return;
     setMobileView("preview");
+    if (!titleOpen && !scheduleOpen) stepBeforePublishRef.current = step;
     setTitleOpen(true);
     reachStep(6); // タイトル設定
+  }
+  // Back out of the publish flow (cancel タイトル設定 / スケジュール / 公開確認):
+  // restore the step we were on AND drop any done-marks above it, so the bar
+  // never stays stuck — or falsely checked — on a step the user abandoned.
+  function exitPublishFlow() {
+    const back = stepBeforePublishRef.current;
+    setStep(back);
+    setStepsDone((d) => d.filter((n) => n <= back));
   }
   // After タイトル設定: merge the edited metadata into the draft, then open the
   // publish confirm (no model cost — publishing reuses the draft body + images).
@@ -2007,16 +2026,23 @@ export default function Page() {
       {titleOpen && draft && (
         <TitleSettings
           draft={draft}
-          onCancel={() => setTitleOpen(false)}
+          onCancel={() => {
+            setTitleOpen(false);
+            exitPublishFlow(); // un-stick the step bar
+          }}
           onProceed={proceedFromTitle}
         />
       )}
       {scheduleOpen && draft && (
         <ScheduleStep
-          onCancel={() => setScheduleOpen(false)}
+          onCancel={() => {
+            setScheduleOpen(false);
+            exitPublishFlow(); // un-stick the step bar
+          }}
           onBack={() => {
             setScheduleOpen(false);
             setTitleOpen(true);
+            setStep(6); // back to タイトル設定
           }}
           onProceed={proceedFromSchedule}
         />
@@ -2359,7 +2385,13 @@ export default function Page() {
               chatImages={chatImages}
               aiUpdating={busy}
               confirming={publishConfirming}
-              setConfirming={setPublishConfirming}
+              setConfirming={(v) => {
+                setPublishConfirming(v);
+                // closing the confirm (キャンセル or a failed publish) must not
+                // leave the step bar stuck on 08; a successful publish re-advances
+                // via onStep(8) right after, so that path stays correct.
+                if (!v) exitPublishFlow();
+              }}
               publishAt={publishAt}
               onStep={onPreviewStep}
               onPublished={loadBlogs}
