@@ -564,9 +564,12 @@ body {
   color: var(--ink-soft);
   font-size: 14px;
   width: fit-content;
+  max-width: 100%;
+  word-break: auto-phrase; /* nicer Japanese wrapping (Chrome/Edge) */
 }
 
 .status .pulse {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -574,6 +577,13 @@ body {
   animation: pulse 1.3s ease-in-out infinite;
 }
 
+/* fixed-width box for the animated dots so growing "・→・・→・・・" never reflows
+   the sentence (which made the last character flicker onto the next line) */
+.status .dots {
+  display: inline-block;
+  width: 1.6em;
+  white-space: nowrap;
+}
 .status .dots::after {
   content: "";
   animation: dots 1.4s steps(4, end) infinite;
@@ -2165,6 +2175,13 @@ body {
   gap: 30px;
   margin-top: 10px;
 }
+.seo-score-stats > div {
+  min-width: 0;
+}
+/* labels stay on one line ("競合の強さ" was orphaning さ); the value can wrap */
+.seo-score-stats .muted {
+  white-space: nowrap;
+}
 .seo-stat {
   font-weight: 700;
   font-size: 14px;
@@ -2282,6 +2299,39 @@ body {
   }
   .seo-main {
     padding: 18px 16px 32px;
+  }
+  /* stack the header so the title gets the full width instead of being
+     crushed into a narrow column next to the action buttons */
+  .seo-main-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .seo-main-headl {
+    min-width: 0;
+  }
+}
+
+/* phones: shrink the big serif title + lay the subtitle on its own line so it
+   no longer breaks mid-word, and let the two action buttons share the row */
+@media (max-width: 480px) {
+  .seo-main-title {
+    font-size: 20px;
+    line-height: 1.4;
+    word-break: auto-phrase;
+  }
+  .seo-main-sub {
+    display: block;
+    margin-top: 5px;
+    word-break: auto-phrase;
+  }
+  .seo-main-actions .ghost-btn,
+  .seo-main-actions .primary-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .seo-score-stats {
+    gap: 18px;
   }
 }
 
@@ -2777,20 +2827,25 @@ body {
   width: 12px;
   height: 12px;
 }
+/* always stack: label on top, value on its own line below — consistent for
+   every item whether the value is short or long */
 .confirm-t {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 .confirm-label {
   color: var(--ink-faint);
   font-size: 12px;
-  min-width: 60px;
 }
 .confirm-val {
   color: var(--ink);
   font-weight: 500;
+  /* break Japanese lines at natural phrase boundaries (文節) where supported
+     (Chrome/Edge), avoiding awkward mid-word breaks like とんでい→る. Falls back
+     to normal wrapping on Safari/iOS — no effect, never breaks layout. */
+  word-break: auto-phrase;
 }
 .confirm-btns {
   display: flex;

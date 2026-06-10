@@ -145,6 +145,29 @@ export function toDisplay(messages: any[]): DisplayMessage[] {
   return out;
 }
 
+// The assembled draft is stored in the conversation as a tool_result carrying
+// `__draft` (see tools.ts propose_blog_post). Scan from the end for the most
+// recent one so the client can restore the live preview after a reload/crash —
+// the draft otherwise lives only in browser memory and is lost on refresh.
+export function latestDraft(messages: any[]): any | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (let j = m.content.length - 1; j >= 0; j--) {
+      const block = m.content[j];
+      if (block?.type !== "tool_result") continue;
+      try {
+        const text = typeof block.content === "string" ? block.content : "";
+        const obj = JSON.parse(text);
+        if (obj && obj.__draft) return obj.__draft;
+      } catch {
+        /* not a draft result */
+      }
+    }
+  }
+  return null;
+}
+
 export function titleFrom(messages: any[]): string {
   const firstUser = messages.find((m) => m.role === "user" && typeof m.content === "string");
   const t = String(firstUser?.content ?? "").trim().replace(/\s+/g, " ");
