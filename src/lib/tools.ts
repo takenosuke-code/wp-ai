@@ -1,7 +1,7 @@
 import { store, searchRelatedPosts } from "./store";
 import type { Conversation } from "./conversations";
 import { getClient, MODEL_CHAT, MODEL_WRITER, MAX_TOKENS } from "./anthropic";
-import { WRITER_SYSTEM, SEO_ANALYST_SYSTEM } from "./systemPrompt";
+import { WRITER_SYSTEM, SEO_ANALYST_SYSTEM, SOURCE_EXTRACTOR_SYSTEM } from "./systemPrompt";
 import { computeCost, logUsage } from "./usage";
 
 // Tool definitions handed to Claude. Custom (client-side) tools: plain JSON schema.
@@ -55,12 +55,19 @@ export const tools = [
           items: { type: "string" },
           description: "Concrete facts, data, named examples, product details to include.",
         },
-        slug: { type: "string", description: "URL-friendly slug: lowercase words separated by hyphens." },
-        category: { type: "string" },
-        tags: { type: "array", items: { type: "string" } },
+        slug: { type: "string", description: "URL-friendly slug: lowercase words separated by hyphens. THIS is the only value that stays in romaji — everything else below MUST be Japanese." },
+        category: {
+          type: "string",
+          description: "記事のカテゴリ。必ず日本語で（例: 働き方、キャリア、暮らし）。",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string", description: "タグ。必ず日本語の単語で。" },
+        },
         featured_image_prompt: {
           type: "string",
-          description: "A prompt an image model could use to generate the featured image.",
+          description:
+            "アイキャッチ画像のアイデア。必ず日本語の文章で書くこと（英語は不可）。どんな写真・イラストが記事に合うかを日本語で説明する（例: 在宅で集中して作業する人の明るいデスク周りの写真）。",
         },
         revision_note: {
           type: "string",
@@ -84,6 +91,23 @@ export const tools = [
         },
       },
       required: ["keyword"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "extract_source_facts",
+    description:
+      "Fetch a real web page (a company/service/product URL the USER provided in the chat) and extract ONLY the facts literally stated on that page — so you can ground a marketing/promotional post in reality instead of guessing. Use this BEFORE proposing a draft for a named business when the user gives (or you ask for) an official URL: call it, then put the returned facts into key_points. Never invent services, prices, areas, founding dates, or achievements — if the page doesn't state something, don't claim it. The URL must already have been mentioned in the conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description:
+            "The full official URL (must start with http:// or https://) that the user provided in the chat — e.g. the company's homepage or service page.",
+        },
+      },
+      required: ["url"],
       additionalProperties: false,
     },
   },
@@ -370,6 +394,91 @@ async function runToolImpl(
         score: report.score,
         recommendation: report.recommendation,
         note: "SEO report card shown to the user. Give a ONE-line takeaway (score + biggest improvement) and offer to apply a concrete improvement as a revision if useful. Do not repeat the full report.",
+      }),
+      isError: false,
+    };
+  }
+
+  if (name === "extract_source_facts") {
+    const rawUrl = String(input?.url ?? "").trim();
+    let host = "";
+    try {
+      const u = new URL(rawUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("bad protocol");
+      host = u.hostname;
+    } catch {
+      return {
+        content:
+          "URLが正しくありません。http:// または https:// で始まる正式なURLを、ユーザーにチャットで送ってもらってください。",
+        isError: true,
+      };
+    }
+
+    let factsText = "";
+    try {
+      const client = getClient();
+      const resp = await client.messages.create({
+        model: MODEL_CHAT, // Haiku + web_fetch: cheap, factual grounding.
+        max_tokens: MAX_TOKENS,
+        system: [{ type: "text", text: SOURCE_EXTRACTOR_SYSTEM, cache_control: { type: "ephemeral" } }],
+        // web_fetch only fetches URLs already present in the conversation, so the
+        // URL must be in this message. allowed_domains locks egress to that host.
+        tools: [
+          {
+            type: "web_fetch_20250910",
+            name: "web_fetch",
+            max_uses: 2,
+            max_content_tokens: 6000,
+            allowed_domains: [host],
+          } as any,
+        ],
+        messages: [
+          {
+            role: "user",
+            content: `次のページを web_fetch で取得し、そのページに実際に書かれている事実だけを日本語の箇条書きで抜き出してください:\n${rawUrl}`,
+          },
+        ],
+      });
+      factsText = resp.content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("")
+        .trim();
+
+      const u: any = resp.usage ?? {};
+      const fu = {
+        input: u.input_tokens ?? 0,
+        output: u.output_tokens ?? 0,
+        cacheRead: u.cache_read_input_tokens ?? 0,
+        cacheCreation: u.cache_creation_input_tokens ?? 0,
+      };
+      await logUsage({
+        conversationId: ctx.conversation.id,
+        model: MODEL_CHAT,
+        ...fu,
+        cost: computeCost(MODEL_CHAT, fu),
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+    } catch (e) {
+      return {
+        content: `ページの取得に失敗しました: ${(e as Error).message}. ユーザーに伝え、URLの確認かやり直しを提案してください。`,
+        isError: true,
+      };
+    }
+
+    if (!factsText) {
+      return {
+        content:
+          "そのページからは事実を抽出できませんでした。別のURLをもらうか、ユーザーに要点を直接教えてもらってください。",
+        isError: true,
+      };
+    }
+    return {
+      content: JSON.stringify({
+        __source_facts: true,
+        url: rawUrl,
+        facts: factsText,
+        note: "これはページに実際に書かれていた事実です。マーケティング記事の key_points に、ここに書かれた範囲だけを使ってください。ここに無い事柄（サービス内容・料金・対応エリア・実績など）は創作せず、[[要確認: ○○]] とするかユーザーに確認してください。",
       }),
       isError: false,
     };

@@ -77,6 +77,7 @@ function toolLabel(name: string): string {
   if (name === "search_existing_posts") return "関連記事を検索しています";
   if (name === "propose_blog_post") return "下書きを作成しています";
   if (name === "seo_analyze") return "競合をWeb検索してSEO分析しています";
+  if (name === "extract_source_facts") return "教えていただいたページを確認しています";
   return "作業しています";
 }
 
@@ -1314,7 +1315,7 @@ function TitleSettings({
               })
             }
           >
-            公開へ進む →
+            スケジュールへ進む →
           </button>
         </div>
       </div>
@@ -2361,7 +2362,11 @@ export default function Page() {
               {(choices || (draft && !busy && !streaming)) && (
                 <div className="options">
                   {choices?.map((opt, i) => (
-                    <button key={i} className="opt" onClick={() => onOption(opt)}>
+                    <button
+                      key={i}
+                      className={`opt ${/SEO/i.test(opt) ? "opt-seo" : ""}`}
+                      onClick={() => onOption(opt)}
+                    >
                       {opt}
                     </button>
                   ))}

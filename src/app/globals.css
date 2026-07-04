@@ -654,6 +654,20 @@ body {
   border-color: var(--accent);
 }
 
+/* SEOチェック — make the offered SEO/competitor option stand out from the plain
+   white choice chips (it was too easy to miss). Purple = AI/SEO accent. */
+.opt.opt-seo {
+  color: var(--ai-ink);
+  background: var(--ai-wash);
+  border-color: var(--ai);
+  font-weight: 600;
+}
+.opt.opt-seo:hover {
+  background: var(--ai);
+  color: #fff;
+  border-color: var(--ai);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {
