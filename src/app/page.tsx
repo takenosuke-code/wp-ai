@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { wantsToFinish } from "@/lib/chatIntent";
 
 type DraftPreview = {
   title: string;
@@ -1108,13 +1109,15 @@ function PreviewPane({
                 </div>
               )}
             </dl>
-            <p className="pub-confirm-note">公開すると右の一覧と公開サイトにすぐ表示されます。</p>
+            <p className="pub-confirm-note">
+              公開すると右の一覧と公開サイトにすぐ表示されます。まだ直したいところがあれば「キャンセル」で戻り、チャットで修正をお願いできます（公開はまだされません）。
+            </p>
             <div className="pub-confirm-btns">
               <button className="pub-btn" onClick={doPublish} disabled={publishing}>
                 {publishing ? "公開中…" : "公開する"}
               </button>
               <button className="pub-cancel" onClick={() => setConfirming(false)} disabled={publishing}>
-                キャンセル
+                キャンセルして修正
               </button>
             </div>
           </div>
@@ -1534,13 +1537,19 @@ export default function Page() {
   const placingRef = useRef(false);
 
   async function loadBlogs() {
-    const res = await fetch("/api/blogs");
-    if (res.ok) setBlogs(await res.json());
+    const res = await fetch("/api/blogs").catch(() => null);
+    if (res?.ok) {
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data)) setBlogs(data);
+    }
   }
 
   async function loadConversations() {
-    const res = await fetch("/api/conversations");
-    if (res.ok) setConversations(await res.json());
+    const res = await fetch("/api/conversations").catch(() => null);
+    if (res?.ok) {
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data)) setConversations(data);
+    }
   }
 
   async function doLogin(e: React.FormEvent) {
@@ -1597,9 +1606,13 @@ export default function Page() {
     seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
-    const res = await fetch(`/api/conversations/${id}`);
-    if (res.ok) {
-      const data = await res.json();
+    const res = await fetch(`/api/conversations/${id}`).catch(() => null);
+    if (res?.ok) {
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        setMessages([]);
+        return;
+      }
       const msgs: ChatMsg[] = (data.messages as { role: string; text: string }[]).map((m) => {
         if (m.role === "assistant") {
           const { body, options, confirm } = parseAssistant(m.text);
@@ -1763,6 +1776,23 @@ export default function Page() {
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
     if (!text || busy) return;
+
+    // Guardrail (RC2): if the user types in chat while the image-step card is up
+    // (instead of clicking この画像で進む), resolve that step first so it never
+    // stays stuck floating over the rest of the conversation.
+    if (heldConfirm && !imageAsked) resolveImageStep();
+
+    // Guardrail: once a draft exists, a free-typed "just publish it / finish it"
+    // is routed to the cancelable publish flow (with its final confirm) rather
+    // than the model, which has no publish tool. Only for text typed in the
+    // composer (textArg === undefined), and never for negations/edits.
+    if (textArg === undefined && draft && wantsToFinish(text)) {
+      setInput("");
+      setMessages((m) => [...m, { role: "user", text }]);
+      startPublish();
+      return;
+    }
+
     let id = convId;
     if (!id) {
       id = crypto.randomUUID();
@@ -1787,7 +1817,16 @@ export default function Page() {
         body: JSON.stringify({ conversationId: id, message: text }),
       });
 
-      const reader = res.body!.getReader();
+      // Guardrail: a non-OK status (e.g. 409 "already processing", 401 session
+      // expired, 500) is NOT the NDJSON stream — surface it instead of silently
+      // swallowing every line as an unparseable JSON chunk.
+      if (!res.ok || !res.body) {
+        const d = res.ok ? ({} as any) : await res.json().catch(() => ({} as any));
+        targetRef.current += `\n\n[エラー: ${d.error || `通信に失敗しました (${res.status})`}]`;
+        return; // finally sets doneRef → the message renders with the error
+      }
+
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -2019,6 +2058,29 @@ export default function Page() {
       return;
     }
     send(opt);
+  }
+
+  // "おまかせで進める": one affordance on every step that just moves forward with
+  // sensible defaults grounded in what the user has already said — so a user who
+  // doesn't want to answer more questions is never stuck. Behavior by phase:
+  //   • draft exists → open the (final-confirm) publish flow with the writer's
+  //     own title/tags/etc as defaults — no model call.
+  //   • image step  → proceed past it (reveal the recap), same as この画像で進む.
+  //   • gathering    → tell the model to stop asking and fill remaining brief
+  //     details with reasonable defaults, up to the これでいいですか confirm.
+  function onContinue() {
+    if (busy) return;
+    if (draft) {
+      startPublish();
+      return;
+    }
+    if (heldConfirm && !imageAsked) {
+      resolveImageStep();
+      return;
+    }
+    send(
+      "ここまでの内容でお任せします。これ以上は質問せず、一般的な情報と常識的な前提で不足を補って、「これでいいですか？」の確認まで進めてください。"
+    );
   }
 
   return (
@@ -2307,6 +2369,14 @@ export default function Page() {
                   {draft && (
                     <button className="opt opt-go" onClick={startPublish}>
                       タイトル設定へ進む →
+                    </button>
+                  )}
+                  {/* every AI-driven step gets a one-click "just proceed with
+                      sensible defaults" so the user is never forced to keep
+                      answering questions (grounded in what they've already said) */}
+                  {choices && !draft && (
+                    <button className="opt opt-omakase" onClick={onContinue}>
+                      おまかせで進めて
                     </button>
                   )}
                   {choices && (

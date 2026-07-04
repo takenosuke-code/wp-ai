@@ -9,6 +9,7 @@ import {
   isValidId,
   type Conversation,
 } from "@/lib/conversations";
+import { sanitizeHistory, withConversationCache } from "@/lib/chatHistory";
 import { computeCost, logUsage, type TurnUsage } from "@/lib/usage";
 import { getSessionUser, unauthorized } from "@/lib/auth";
 
@@ -23,22 +24,10 @@ const STEP_BY_TOOL: Record<string, number> = {
   seo_analyze: 6, // SEOチェック
 };
 
-// Put a cache breakpoint on the last message so the whole conversation prefix is
-// cached for the next turn (0.1× input on a hit). Returns a copy — never mutates
-// the stored conversation. Pairs with the cached system prompt (2 breakpoints).
-function withConversationCache(messages: any[]): any[] {
-  if (messages.length === 0) return messages;
-  const out = messages.slice();
-  const last = out[out.length - 1];
-  let blocks =
-    typeof last.content === "string"
-      ? [{ type: "text", text: last.content }]
-      : last.content.slice();
-  const lastBlock = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
-  blocks = [...blocks.slice(0, -1), lastBlock];
-  out[out.length - 1] = { ...last, content: blocks };
-  return out;
-}
+// Best-effort per-conversation lock (single instance): stops two racing sends on
+// the SAME conversation from interleaving and clobbering each other's history.
+// The client already blocks same-tab double-sends; this covers two tabs / retries.
+const activeConversations = new Set<string>();
 
 export async function POST(req: NextRequest) {
   if (!getSessionUser()) return unauthorized();
@@ -46,21 +35,58 @@ export async function POST(req: NextRequest) {
   if (!isValidId(conversationId)) {
     return new Response("invalid conversationId", { status: 400 });
   }
+  if (typeof message !== "string" || !message.trim()) {
+    return Response.json({ error: "メッセージが空です。" }, { status: 400 });
+  }
 
-  const now = new Date().toISOString();
-  const conv: Conversation =
-    (await loadConversation(conversationId)) ??
-    { id: conversationId, title: "", createdAt: now, updatedAt: now, messages: [] };
-
-  conv.messages.push({ role: "user", content: message });
-
+  // Construct the client BEFORE acquiring the lock: if it throws (e.g. missing
+  // ANTHROPIC_API_KEY) we must not leave the conversation locked.
   const client = getClient();
   const encoder = new TextEncoder();
 
+  // Reject a second concurrent send on the same conversation (see the lock note).
+  if (activeConversations.has(conversationId)) {
+    return Response.json(
+      { error: "この会話はまだ処理中です。完了までお待ちください。" },
+      { status: 409 }
+    );
+  }
+  activeConversations.add(conversationId);
+
+  const now = new Date().toISOString();
+  let conv: Conversation;
+  try {
+    conv =
+      (await loadConversation(conversationId)) ??
+      { id: conversationId, title: "", createdAt: now, updatedAt: now, messages: [] };
+  } catch {
+    // Release the lock on any load failure so the conversation isn't stuck.
+    activeConversations.delete(conversationId);
+    return Response.json(
+      { error: "会話の読み込みに失敗しました。しばらくして再度お試しください。" },
+      { status: 500 }
+    );
+  }
+
+  conv.messages.push({ role: "user", content: message });
+  // SELF-HEAL: repair any pre-existing corruption (dangling tool_use, empty
+  // blocks, non-alternating roles) before we send to the model, so a previously
+  // bricked conversation recovers on the very next message instead of 400-ing
+  // forever. Also merges this new user turn cleanly onto whatever came before.
+  conv.messages = sanitizeHistory(conv.messages);
+
   const stream = new ReadableStream({
     async start(controller) {
-      const emit = (obj: Record<string, unknown>) =>
-        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      // emit MUST NOT throw: if the client disconnected, enqueue fails — we
+      // swallow it so the tool loop still completes and persists a well-formed
+      // conversation (a throw here used to leave a dangling tool_use).
+      const emit = (obj: Record<string, unknown>) => {
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        } catch {
+          /* client gone — keep processing so we persist a clean history */
+        }
+      };
 
       const turn: TurnUsage = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
 
@@ -157,9 +183,20 @@ export async function POST(req: NextRequest) {
           /* ignore */
         }
       } finally {
-        controller.close();
+        activeConversations.delete(conversationId);
+        try {
+          controller.close();
+        } catch {
+          /* already closed (client cancelled) */
+        }
       }
     },
+    // NOTE: do NOT release the lock here. On client disconnect the stream is
+    // cancelled but start() keeps running in the background (emit becomes a
+    // no-op) to finish the turn and persist a well-formed conversation. Freeing
+    // the lock now would let a quick resend race that pending saveConversation
+    // and clobber history — the very thing the lock prevents. The start()
+    // `finally` is the single release point, and it runs once that work is done.
   });
 
   return new Response(stream, {
