@@ -168,6 +168,11 @@ export function latestDraft(messages: any[]): any | null {
   return null;
 }
 
+// The conversation-history invariant guards live in a dependency-free module so
+// they're unit-testable in isolation. Re-exported here so existing importers of
+// `@/lib/conversations` keep working.
+export { sanitizeHistory } from "./chatHistory";
+
 export function titleFrom(messages: any[]): string {
   const firstUser = messages.find((m) => m.role === "user" && typeof m.content === "string");
   const t = String(firstUser?.content ?? "").trim().replace(/\s+/g, " ");

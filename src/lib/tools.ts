@@ -190,7 +190,28 @@ function parseSeoReport(text: string, fallbackKeyword: string): Record<string, a
   }
 }
 
+// Public entry point. A tool must NEVER throw out of the agentic loop: an
+// unhandled throw between the assistant `tool_use` and its `tool_result` would
+// persist a dangling tool_use and 400 every future turn (the "JSON error").
+// So we always resolve to a well-formed ToolResult — errors become is_error
+// results the model can recover from, not exceptions.
 export async function runTool(
+  name: string,
+  input: any,
+  emit: Emit,
+  ctx: ToolContext
+): Promise<ToolResult> {
+  try {
+    return await runToolImpl(name, input, emit, ctx);
+  } catch (e) {
+    return {
+      content: `Tool "${name}" failed: ${(e as Error)?.message ?? String(e)}. Tell the user briefly and offer to retry.`,
+      isError: true,
+    };
+  }
+}
+
+async function runToolImpl(
   name: string,
   input: any,
   emit: Emit,
