@@ -867,6 +867,93 @@ body {
   border-color: var(--ink-faint);
 }
 
+/* ── Chat error card: retryable, never a dead end ─────────────────────────── */
+.chat-error {
+  margin-top: 8px;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.chat-error-h {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+.chat-error-msg {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.chat-error-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 8px 0 12px;
+  line-height: 1.6;
+}
+.chat-error-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chat-error-retry {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 9px;
+  padding: 9px 18px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.chat-error-retry:hover {
+  background: var(--accent-ink);
+}
+.chat-error-new {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.chat-error-new:hover {
+  border-color: var(--ink-faint);
+}
+
+/* Upload failure toast pinned to the composer (was silently swallowed before) */
+.composer-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--ink-faint);
+  border-radius: 9px;
+}
+.composer-error button {
+  flex: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
 .field textarea::placeholder {
   color: var(--ink-faint);
 }

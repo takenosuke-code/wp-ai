@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WP_AI — Mobile UI variants</title>
+<style>
+  :root {
+    --paper:#f5f4f1; --surface:#fff; --ink:#1a1917; --ink-soft:#6f6b63; --ink-faint:#9b968c;
+    --line:#e7e4dc; --line-soft:#efece5; --accent:#3a3f9e; --accent-ink:#2c2f7d; --accent-wash:#edeef8;
+    --ai:#4f46e5; --ai-wash:#eef0fe; --user-bubble:#ece9e1;
+    --shadow:0 1px 2px rgba(26,25,23,.04),0 8px 24px rgba(26,25,23,.08);
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:#e9e7e2; color:var(--ink); font-family:"Noto Sans JP",ui-sans-serif,system-ui,sans-serif; padding:36px 20px 60px; }
+  .intro { max-width:1180px; margin:0 auto 30px; }
+  .intro h1 { font-size:24px; margin-bottom:8px; }
+  .intro p { color:var(--ink-soft); font-size:14px; line-height:1.7; max-width:820px; }
+  .variants { display:flex; flex-wrap:wrap; gap:34px; justify-content:center; max-width:1280px; margin:0 auto; }
+  .variant { width:360px; }
+  .v-head { margin-bottom:12px; }
+  .v-tag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.08em; color:#fff; background:var(--accent); border-radius:99px; padding:4px 12px; margin-bottom:6px; }
+  .v-tag.rec { background:var(--ai); }
+  .v-head h2 { font-size:17px; }
+  .v-head p { font-size:12.5px; color:var(--ink-soft); line-height:1.65; margin-top:4px; }
+  .notes { margin-top:14px; font-size:12px; color:var(--ink-soft); line-height:1.7; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .notes b { color:var(--ink); }
+  .notes ul { padding-left:16px; margin-top:4px; }
+
+  /* phone frame */
+  .phone { width:360px; height:730px; background:var(--paper); border:10px solid #23211e; border-radius:34px; overflow:hidden; position:relative; box-shadow:var(--shadow); display:flex; flex-direction:column; }
+
+  /* shared bits */
+  .top { background:var(--surface); border-bottom:1px solid var(--line); padding:10px 12px; display:flex; align-items:center; gap:8px; }
+  .burger { width:34px; height:34px; border:1px solid var(--line); border-radius:9px; background:var(--surface); display:grid; place-items:center; font-size:15px; }
+  .mark { width:22px; height:22px; border-radius:7px; background:var(--accent); color:#fff; display:grid; place-items:center; font-family:Georgia,serif; font-style:italic; font-size:14px; }
+  .bname { font-weight:700; font-size:14px; }
+  .spacer { flex:1; }
+  .cta { background:var(--accent); color:#fff; border:none; border-radius:10px; font-size:12.5px; font-weight:600; padding:9px 12px; }
+  .ghost { background:var(--surface); border:1px solid var(--line); border-radius:10px; font-size:14px; padding:8px 10px; }
+
+  .chat { flex:1; overflow:hidden; padding:14px 12px; display:flex; flex-direction:column; gap:12px; }
+  .bub { max-width:86%; border-radius:14px; padding:10px 13px; font-size:13px; line-height:1.65; }
+  .bub.ai { background:var(--surface); border:1px solid var(--line); }
+  .bub.me { background:var(--user-bubble); align-self:flex-end; }
+  .who { font-size:10.5px; color:var(--ink-faint); margin-bottom:-6px; }
+  .chips { display:flex; flex-direction:column; gap:8px; }
+  .chip { border:1.5px solid var(--accent); color:var(--accent); background:var(--surface); border-radius:12px; padding:12px 14px; font-size:13.5px; font-weight:600; text-align:left; }
+  .chip.sub { border-color:var(--line); color:var(--ink-soft); font-weight:500; }
+  .composer { background:var(--surface); border-top:1px solid var(--line); padding:10px 12px; display:flex; gap:8px; align-items:center; }
+  .input { flex:1; border:1.5px solid var(--line); border-radius:12px; padding:11px 13px; font-size:13px; color:var(--ink-faint); background:var(--paper); }
+  .iconb { width:42px; height:42px; flex:none; border:1px solid var(--line); border-radius:11px; background:var(--surface); display:grid; place-items:center; font-size:17px; }
+  .sendb { width:44px; height:44px; flex:none; border:none; border-radius:12px; background:var(--accent); color:#fff; display:grid; place-items:center; font-size:17px; }
+
+  /* A: step chip + bottom tabs */
+  .stepchip { margin:10px 12px 0; background:var(--ai-wash); border:1px solid var(--ai); border-radius:12px; padding:9px 13px; display:flex; align-items:center; gap:10px; }
+  .stepchip .n { font-size:11px; font-weight:700; color:var(--ai); letter-spacing:.05em; }
+  .stepchip .l { font-size:13px; font-weight:700; }
+  .stepchip .bar { flex:1; height:5px; border-radius:99px; background:#dcdcf4; overflow:hidden; }
+  .stepchip .fill { width:37%; height:100%; background:var(--ai); border-radius:99px; }
+  .stepchip .chev { color:var(--ai); font-weight:700; }
+  .tabs { display:flex; background:var(--surface); border-top:1px solid var(--line); }
+  .tab { flex:1; padding:9px 0 12px; text-align:center; font-size:10.5px; color:var(--ink-faint); }
+  .tab .ic { display:block; font-size:19px; margin-bottom:2px; }
+  .tab.on { color:var(--accent); font-weight:700; }
+  .tab .badge { position:relative; }
+  .tab .badge::after { content:""; position:absolute; top:-2px; right:-7px; width:7px; height:7px; border-radius:50%; background:var(--ai); }
+  .nextbar { background:var(--surface); border-top:1px solid var(--line); padding:10px 12px; }
+  .nextbtn { width:100%; background:var(--accent); color:#fff; border:none; border-radius:12px; font-size:14.5px; font-weight:700; padding:14px; }
+  .nextbtn.ai { background:var(--ai); }
+
+  /* B: horizontal step rail */
+  .steprail { display:flex; gap:6px; overflow:hidden; padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--line); }
+  .spill { flex:none; display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-faint); border:1px solid var(--line); border-radius:99px; padding:5px 10px; white-space:nowrap; }
+  .spill.done { color:var(--accent); border-color:var(--accent-wash); background:var(--accent-wash); }
+  .spill.on { color:#fff; background:var(--ai); border-color:var(--ai); font-weight:700; font-size:12px; padding:6px 12px; }
+
+  /* C: wizard */
+  .wiz { flex:1; padding:16px 14px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
+  .wizcard { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:var(--shadow); }
+  .wizstep { font-size:11px; font-weight:700; color:var(--ai); letter-spacing:.06em; }
+  .wizh { font-size:17px; font-weight:700; margin:4px 0 6px; }
+  .wizp { font-size:12.5px; color:var(--ink-soft); line-height:1.65; }
+  .conf { margin-top:12px; background:var(--ai-wash); border:1px solid var(--ai); border-radius:12px; padding:12px 14px; }
+  .conf .row { display:flex; gap:8px; font-size:12.5px; line-height:1.7; }
+  .conf .row b { color:var(--ai); font-weight:700; }
+  .wizfoot { display:flex; gap:10px; padding:12px; background:var(--surface); border-top:1px solid var(--line); }
+  .backb { flex:1; border:1.5px solid var(--line); background:var(--surface); border-radius:12px; padding:13px; font-size:14px; color:var(--ink-soft); }
+  .fwdb { flex:2; border:none; background:var(--accent); color:#fff; border-radius:12px; padding:13px; font-size:14.5px; font-weight:700; }
+  .fab { position:absolute; right:14px; bottom:86px; width:52px; height:52px; border-radius:50%; background:var(--ai); color:#fff; display:grid; place-items:center; font-size:21px; box-shadow:0 6px 18px rgba(79,70,229,.4); }
+
+  .preview-note { font-size:11px; color:var(--ink-faint); text-align:center; padding:6px 0 2px; }
+  @media (max-width:800px){ .variants{gap:26px} }
+</style>
+</head>
+<body>
+  <div class="intro">
+    <h1>Mobile UI — 3 variants (all features kept)</h1>
+    <p>Same functionality as today — chat, image upload, live preview, SEO screen, title/schedule/publish flow, history, published list.
+    Only the phone <b>navigation and button visibility</b> change. Pick one (or mix): the main client complaint was that the “next thing to tap” isn’t obvious on the phone.</p>
+  </div>
+
+  <div class="variants">
+
+    <!-- ── VARIANT A ─────────────────────────────────────────── -->
+    <div class="variant">
+      <div class="v-head">
+        <span class="v-tag rec">A — RECOMMENDED</span>
+        <h2>Bottom tabs + one big “next” button</h2>
+        <p>Phone-native tab bar (チャット / プレビュー / 記事). The 8-step bar collapses into one purple progress chip. A sticky button always shows the single next action.</p>
+      </div>
+      <div class="phone">
+        <div class="top">
+          <div class="burger">☰</div>
+          <div class="mark">L</div><span class="bname">Loop AI</span>
+          <div class="spacer"></div>
+          <button class="ghost">👁</button>
+        </div>
+        <div class="stepchip">
+          <span class="n">STEP 3/8</span><span class="l">AI要約・確認</span>
+          <span class="bar"><span class="fill"></span></span><span class="chev">›</span>
+        </div>
+        <div class="chat">
+          <span class="who">アシスタント</span>
+          <div class="bub ai">内容を整理しました。これで進めてよいかご確認ください。</div>
+          <div class="chips">
+            <div class="chip">OK、これで進める</div>
+            <div class="chip sub">直したい</div>
+            <div class="chip sub">おまかせで進めて</div>
+          </div>
+        </div>
+        <div class="nextbar"><button class="nextbtn ai">✦ 次へ：OKして下書きを作成</button></div>
+        <div class="composer">
+          <div class="iconb">🖼</div>
+          <div class="input">メッセージを入力…</div>
+          <div class="sendb">↑</div>
+        </div>
+        <div class="tabs">
+          <div class="tab on"><span class="ic">💬</span>チャット</div>
+          <div class="tab"><span class="ic badge">👁</span>プレビュー</div>
+          <div class="tab"><span class="ic">📚</span>記事</div>
+        </div>
+      </div>
+      <div class="notes">
+        <b>What changes</b>
+        <ul>
+          <li>Tabs replace the hidden view-toggle; a purple dot on プレビュー when the draft updates.</li>
+          <li>Step bar → tappable chip (opens the full 8-step list as a sheet).</li>
+          <li>Sticky “next action” button mirrors the flow state (OKする → SEOチェック → タイトル設定へ → 公開する).</li>
+        </ul>
+        <b>Trade-off:</b> ~55px of vertical space used by tabs.
+      </div>
+    </div>
+
+    <!-- ── VARIANT B ─────────────────────────────────────────── -->
+    <div class="variant">
+      <div class="v-head">
+        <span class="v-tag">B — MINIMAL CHANGE</span>
+        <h2>Keep today’s layout, add a sticky action dock</h2>
+        <p>Current swap-view stays. The step bar becomes a swipeable rail centered on the current step, and the one next action is docked above the composer — never hidden.</p>
+      </div>
+      <div class="phone">
+        <div class="top">
+          <div class="burger">☰</div>
+          <div class="mark">L</div><span class="bname">Loop AI</span>
+          <div class="spacer"></div>
+          <button class="ghost">👁 プレビュー</button>
+        </div>
+        <div class="steprail">
+          <span class="spill done">✓ 内容</span>
+          <span class="spill done">✓ 画像</span>
+          <span class="spill on">03 AI要約・確認</span>
+          <span class="spill">04 SEO</span>
+          <span class="spill">05 プレビュー</span>
+        </div>
+        <div class="chat">
+          <span class="who">アシスタント</span>
+          <div class="bub ai">下書きができました。「ライブプレビュー」でご確認ください。画像の追加や公開はプレビュー上で行えます。</div>
+          <div class="bub me">SEOチェックをする</div>
+          <span class="who">アシスタント</span>
+          <div class="bub ai">スコアは72点。タイトルへの主要キーワード追加が最も効果的です。</div>
+        </div>
+        <div class="nextbar"><button class="nextbtn">タイトル設定へ進む →</button></div>
+        <div class="composer">
+          <div class="iconb">🖼</div>
+          <div class="input">メッセージを入力…</div>
+          <div class="sendb">↑</div>
+        </div>
+        <div class="preview-note">layout otherwise identical to current app</div>
+      </div>
+      <div class="notes">
+        <b>What changes</b>
+        <ul>
+          <li>Step pills: horizontal swipe, current step enlarged — no more 8 unreadable micro-pills.</li>
+          <li>Docked action button = same actions that exist today as chat chips, promoted so they can’t scroll out of view.</li>
+          <li>All touch targets ≥ 44px; option chips become full-width.</li>
+        </ul>
+        <b>Trade-off:</b> preview is still “another screen” you jump to via 👁.
+      </div>
+    </div>
+
+    <!-- ── VARIANT C ─────────────────────────────────────────── -->
+    <div class="variant">
+      <div class="v-head">
+        <span class="v-tag">C — GUIDED WIZARD</span>
+        <h2>Full-screen step cards, chat as a floating bubble</h2>
+        <p>Each of the 8 steps is a full-screen card with big 戻る / 次へ. Chat opens as an overlay from the ✦ bubble. Most guidance, least “where am I?” — but the biggest change.</p>
+      </div>
+      <div class="phone">
+        <div class="top">
+          <div class="burger">☰</div>
+          <div class="mark">L</div><span class="bname">Loop AI</span>
+          <div class="spacer"></div>
+          <span style="font-size:11px;color:var(--ink-faint)">STEP 3/8</span>
+        </div>
+        <div class="wiz">
+          <div class="wizcard">
+            <div class="wizstep">STEP 03 — AI要約・確認</div>
+            <div class="wizh">この内容で進めてよろしいですか？</div>
+            <div class="wizp">AIがここまでの会話を整理しました。修正したい場合は「直したい」か、下のチャットで伝えてください。</div>
+            <div class="conf">
+              <div class="row"><b>目的</b> 集客（サービス紹介）</div>
+              <div class="row"><b>読者</b> 沖縄旅行を計画している家族</div>
+              <div class="row"><b>トーン</b> やわらかい敬語</div>
+              <div class="row"><b>構成</b> 導入 / 3つの魅力 / モデルコース / まとめ</div>
+            </div>
+          </div>
+          <div class="wizcard" style="opacity:.55">
+            <div class="wizstep">NEXT — STEP 04</div>
+            <div class="wizh" style="font-size:14px">SEOチェック（任意）</div>
+          </div>
+        </div>
+        <div class="fab">✦</div>
+        <div class="wizfoot">
+          <button class="backb">‹ 直したい</button>
+          <button class="fwdb">OK、下書きを作成 →</button>
+        </div>
+      </div>
+      <div class="notes">
+        <b>What changes</b>
+        <ul>
+          <li>The flow drives the screen; chat becomes an assist layer (✦ bubble opens it full-screen).</li>
+          <li>Every screen has exactly one forward and one back button — nothing to hunt for.</li>
+        </ul>
+        <b>Trade-off:</b> biggest build effort; chat-first users lose the “always visible conversation”.
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

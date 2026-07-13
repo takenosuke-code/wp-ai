@@ -31,7 +31,15 @@ const activeConversations = new Set<string>();
 
 export async function POST(req: NextRequest) {
   if (!getSessionUser()) return unauthorized();
-  const { conversationId, message } = await req.json();
+  // A malformed body must be a clean 400 (the client shows it + offers retry),
+  // never an unhandled throw.
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "リクエストの形式が不正です。" }, { status: 400 });
+  }
+  const { conversationId, message } = body ?? {};
   if (!isValidId(conversationId)) {
     return new Response("invalid conversationId", { status: 400 });
   }

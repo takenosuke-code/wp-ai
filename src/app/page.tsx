@@ -71,6 +71,9 @@ const OPT_CLOSE = "[[/OPTIONS]]";
 const CONF_OPEN = "[[CONFIRM]]";
 const CONF_CLOSE = "[[/CONFIRM]]";
 const CONV_KEY = "wpai.conv";
+// Per-conversation persistence of chat-uploaded images (with their vision-chosen
+// sections), so a reload/crash doesn't drop them out of the draft preview.
+const IMGS_KEY = (id: string) => `wpai.imgs.${id}`;
 
 function toolLabel(name: string): string {
   if (name === "list_existing_posts") return "既存の記事を確認しています";
@@ -831,6 +834,7 @@ function PreviewPane({
   publishAt,
   onStep,
   onPublished,
+  onAuthExpired,
 }: {
   draft: DraftPreview;
   chatImages: ChatImage[];
@@ -840,6 +844,7 @@ function PreviewPane({
   publishAt: string | null;
   onStep: (n: number) => void;
   onPublished: () => void;
+  onAuthExpired: () => void;
 }) {
   const sections = useMemo(() => splitSections(draft.content), [draft.content]);
   // Slots start auto-filled with the chat-uploaded images (§03 自動配置); the
@@ -890,6 +895,10 @@ function PreviewPane({
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (res.status === 401) {
+        onAuthExpired();
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || draft.title;
@@ -951,6 +960,10 @@ function PreviewPane({
           publishAt: publishAt ?? undefined,
         }),
       });
+      if (res.status === 401) {
+        onAuthExpired();
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "公開に失敗しました");
       setPublished(true);
@@ -1505,6 +1518,15 @@ export default function Page() {
   const [panelOpen, setPanelOpen] = useState(false);
   // Mobile: which body column is shown (the two columns stack/swap on phones).
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
+  // Graceful error recovery: when a chat turn fails (network, 409 busy, server
+  // error), we keep the failed user message here and show an error card with a
+  // 再試行 button. Retrying re-sends the message; the server re-reads the FULL
+  // conversation history (and self-heals it) so the AI picks up exactly where
+  // the flow left off — no need to start over.
+  const [chatError, setChatError] = useState<{ message: string; retryText: string } | null>(null);
+  // Image-upload failures from the chat composer are surfaced here (they used to
+  // be silently swallowed, which read as "the button does nothing").
+  const [uploadError, setUploadError] = useState("");
 
   // The progress bar only moves forward within a conversation (revisions don't
   // regress it); it resets when a new/other conversation is opened.
@@ -1536,6 +1558,28 @@ export default function Page() {
   const doneRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const placingRef = useRef(false);
+  // In-flight chat request. Switching/creating a conversation aborts it so a
+  // late-arriving stream can never bleed its text/draft into the newly opened
+  // conversation (the server still finishes + persists the turn on its side).
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Stop any in-flight send + reveal loop and reset transient chat UI state.
+  // Called when opening another conversation or starting a new chat.
+  function cancelInFlight() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    doneRef.current = true;
+    targetRef.current = "";
+    setBusy(false);
+    setStreaming("");
+    setStatus(null);
+    setDrafting(false);
+    setChatError(null);
+  }
 
   async function loadBlogs() {
     const res = await fetch("/api/blogs").catch(() => null);
@@ -1587,6 +1631,7 @@ export default function Page() {
   }
 
   async function openConversation(id: string) {
+    cancelInFlight();
     setConvId(id);
     localStorage.setItem(CONV_KEY, id);
     setSelected(null);
@@ -1597,8 +1642,19 @@ export default function Page() {
     setTitleOpen(false);
     setScheduleOpen(false);
     setPublishAt(null);
-    setChatImages([]);
-    setImageAsked(false);
+    // Restore chat-uploaded images for this conversation (kept per-conversation
+    // in localStorage) so a reload doesn't drop them out of the draft preview.
+    let savedImgs: ChatImage[] = [];
+    try {
+      const raw = localStorage.getItem(IMGS_KEY(id));
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) savedImgs = parsed.filter((im) => im && typeof im.url === "string");
+    } catch {
+      /* corrupted entry — start clean */
+    }
+    setChatImages(savedImgs);
+    if (savedImgs.length) markDone(2);
+    setImageAsked(savedImgs.length > 0);
     setHeldConfirm(null);
     setSeoReport(null);
     setSeoOpen(false);
@@ -1635,6 +1691,7 @@ export default function Page() {
   }
 
   function newChat() {
+    cancelInFlight();
     const id = crypto.randomUUID();
     setConvId(id);
     localStorage.setItem(CONV_KEY, id);
@@ -1663,6 +1720,9 @@ export default function Page() {
   async function deleteConv(id: string, e: React.MouseEvent) {
     e.stopPropagation();
     await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    try {
+      localStorage.removeItem(IMGS_KEY(id));
+    } catch {}
     if (id === convId) newChat();
     loadConversations();
   }
@@ -1734,6 +1794,21 @@ export default function Page() {
     })();
   }, [draft, chatImages]);
 
+  // Persist chat-uploaded images per conversation so a reload restores them into
+  // the preview (sections included — restoring never re-runs the vision call).
+  useEffect(() => {
+    if (!convId) return;
+    try {
+      if (chatImages.length) {
+        localStorage.setItem(IMGS_KEY(convId), JSON.stringify(chatImages));
+      } else {
+        localStorage.removeItem(IMGS_KEY(convId));
+      }
+    } catch {
+      /* storage full/unavailable — non-fatal */
+    }
+  }, [chatImages, convId]);
+
   function startReveal() {
     shownRef.current = 0;
     const tick = () => {
@@ -1774,9 +1849,10 @@ export default function Page() {
     rafRef.current = requestAnimationFrame(tick);
   }
 
-  async function send(textArg?: string) {
+  async function send(textArg?: string, opts?: { isRetry?: boolean }) {
     const text = (textArg ?? input).trim();
     if (!text || busy) return;
+    setChatError(null);
 
     // Guardrail (RC2): if the user types in chat while the image-step card is up
     // (instead of clicking この画像で進む), resolve that step first so it never
@@ -1801,7 +1877,8 @@ export default function Page() {
       localStorage.setItem(CONV_KEY, id);
     }
     if (textArg === undefined) setInput("");
-    setMessages((m) => [...m, { role: "user", text }]);
+    // On retry the user's message is already in the thread — don't show it twice.
+    if (!opts?.isRetry) setMessages((m) => [...m, { role: "user", text }]);
     reachStep(1); // 内容を伝える — stays here through the whole Q&A gathering
     setBusy(true);
     setDrafting(false);
@@ -1811,20 +1888,34 @@ export default function Page() {
     doneRef.current = false;
     startReveal();
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: id, message: text }),
+        signal: ctrl.signal,
       });
 
-      // Guardrail: a non-OK status (e.g. 409 "already processing", 401 session
-      // expired, 500) is NOT the NDJSON stream — surface it instead of silently
-      // swallowing every line as an unparseable JSON chunk.
+      // Session expired mid-conversation: go back to the login gate instead of
+      // showing a dead-end error. The conversation id is kept in localStorage,
+      // so after logging in the chat (and its draft) is restored automatically.
+      if (res.status === 401) {
+        setAuthed(false);
+        return;
+      }
+
+      // Guardrail: a non-OK status (e.g. 409 "already processing", 500) is NOT
+      // the NDJSON stream — surface it as a retryable error card instead of
+      // silently swallowing every line as an unparseable JSON chunk.
       if (!res.ok || !res.body) {
         const d = res.ok ? ({} as any) : await res.json().catch(() => ({} as any));
-        targetRef.current += `\n\n[エラー: ${d.error || `通信に失敗しました (${res.status})`}]`;
-        return; // finally sets doneRef → the message renders with the error
+        setChatError({
+          message: d.error || `通信に失敗しました (${res.status})`,
+          retryText: text,
+        });
+        return; // finally sets doneRef → busy clears and the error card shows
       }
 
       const reader = res.body.getReader();
@@ -1889,14 +1980,24 @@ export default function Page() {
           } else if (evt.type === "blog") {
             loadBlogs();
           } else if (evt.type === "error") {
-            targetRef.current += `\n\n[エラー: ${evt.message}]`;
+            // Server-side turn error (model call failed mid-turn). The server has
+            // already persisted what it could and self-heals the history, so a
+            // simple retry picks up right where the flow left off.
+            setChatError({ message: evt.message, retryText: text });
             setStatus(null);
           }
         }
       }
     } catch (err: any) {
-      targetRef.current += `\n\n[通信エラー: ${err?.message ?? err}]`;
+      // A deliberate abort (conversation switch / new chat) is not an error.
+      if (err?.name !== "AbortError") {
+        setChatError({
+          message: `通信エラー: ${err?.message ?? err}`,
+          retryText: text,
+        });
+      }
     } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
       doneRef.current = true;
     }
   }
@@ -1917,10 +2018,16 @@ export default function Page() {
     e.target.value = "";
     if (!file) return;
     setChatUploading(true);
+    setUploadError("");
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (res.status === 401) {
+        // Session expired — back to login; the conversation restores after.
+        setAuthed(false);
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "アップロードに失敗しました");
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "image";
@@ -1930,8 +2037,9 @@ export default function Page() {
       // the draft/preview (vision), not kept as a floating strip above the input.
       setMessages((m) => [...m, { role: "user", text: "", upload: img }]);
       markDone(2); // 画像をアップ
-    } catch {
-      // surfaced inline elsewhere; keep the composer quiet on failure
+    } catch (err: any) {
+      // Show the failure by the composer — a silent no-op reads as a dead button.
+      setUploadError(err?.message ?? "アップロードに失敗しました。もう一度お試しください。");
     } finally {
       setChatUploading(false);
     }
@@ -2296,7 +2404,13 @@ export default function Page() {
                   {m.confirm && (
                     <ConfirmCard
                       data={m.confirm}
-                      disabled={busy || i !== messages.length - 1}
+                      // Only a real reply (user text or a newer confirm) retires
+                      // the card — marker bubbles (image uploads, draft/SEO
+                      // chips) after it must NOT freeze the OK/直したい buttons.
+                      disabled={
+                        busy ||
+                        messages.slice(i + 1).some((mm) => mm.text.trim() !== "" || mm.confirm)
+                      }
                       onChoice={(v) => send(v)}
                     />
                   )}
@@ -2331,6 +2445,27 @@ export default function Page() {
                       </div>
                     )
                   )}
+                </div>
+              )}
+
+              {chatError && !busy && (
+                <div className="chat-error" role="alert">
+                  <div className="chat-error-h">⚠ エラーが発生しました</div>
+                  <div className="chat-error-msg">{chatError.message}</div>
+                  <div className="chat-error-sub">
+                    「再試行」を押すと、AIがここまでの会話をすべて読み直して、続きから再開します（最初からやり直す必要はありません）。
+                  </div>
+                  <div className="chat-error-btns">
+                    <button
+                      className="chat-error-retry"
+                      onClick={() => send(chatError.retryText, { isRetry: true })}
+                    >
+                      再試行
+                    </button>
+                    <button className="chat-error-new" onClick={newChat}>
+                      新しいチャットで始める
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -2396,6 +2531,14 @@ export default function Page() {
 
           <div className="composer">
             <input ref={chatFileRef} type="file" accept="image/*" hidden onChange={onChatImage} />
+            {uploadError && (
+              <div className="composer-error" role="alert">
+                <span>⚠ {uploadError}</span>
+                <button onClick={() => setUploadError("")} aria-label="閉じる">
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="field">
               <textarea
                 ref={textareaRef}
@@ -2470,6 +2613,7 @@ export default function Page() {
               publishAt={publishAt}
               onStep={onPreviewStep}
               onPublished={loadBlogs}
+              onAuthExpired={() => setAuthed(false)}
             />
           ) : drafting ? (
             <PreviewLoading />
