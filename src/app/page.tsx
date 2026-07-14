@@ -342,7 +342,9 @@ function StepBar({ current, done }: { current: number; done: number[] }) {
     <div className="steps" role="list" aria-label="投稿の進行状況">
       {STEPS.map((label, i) => {
         const n = i + 1;
-        const state = n === current ? "active" : done.includes(n) ? "done" : "todo";
+        // A completed step shows its check even while current — otherwise the
+        // final 公開 pill stays "active" forever after a successful publish.
+        const state = done.includes(n) ? "done" : n === current ? "active" : "todo";
         return (
           <div
             key={n}
@@ -531,8 +533,10 @@ function SeoScreen({
   stepsDone,
   selectedKw,
   delta,
+  stale,
   onToggleKw,
   onOptimize,
+  onRecheck,
   onBack,
   onProceed,
 }: {
@@ -541,8 +545,10 @@ function SeoScreen({
   stepsDone: number[];
   selectedKw: string[];
   delta: number | null;
+  stale: boolean;
   onToggleKw: (term: string) => void;
   onOptimize: () => void;
+  onRecheck: () => void;
   onBack: () => void;
   onProceed: () => void;
 }) {
@@ -605,6 +611,20 @@ function SeoScreen({
             </button>
           </div>
         </div>
+
+        {stale && (
+          <div className="seo-stale-note" role="note">
+            <span className="seo-stale-ic" aria-hidden="true">
+              <Ic d="M12 8v4l3 3 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" />
+            </span>
+            <span className="seo-stale-txt">
+              この結果は<strong>変更前の下書き</strong>に基づいています。このまま公開しても問題ありません（再チェックは任意）。
+            </span>
+            <button className="ghost-btn seo-stale-btn" onClick={onRecheck}>
+              再チェックする
+            </button>
+          </div>
+        )}
 
         <div className="seo-cards">
           <div className="seo-col">
@@ -1508,6 +1528,15 @@ export default function Page() {
   // survives re-renders so we can compare across checks in a conversation.
   const [seoDelta, setSeoDelta] = useState<number | null>(null);
   const seoScoreRef = useRef<number | null>(null);
+  // The report describes ONE draft version: revising after a check makes it
+  // stale. Informational only — publishing with a stale report is fine.
+  const [seoStale, setSeoStale] = useState(false);
+  // Latest draft, readable inside the async stream handler (the `draft` state
+  // captured by its closure can be a render behind).
+  const draftRef = useRef<DraftPreview | null>(null);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
   const chatFileRef = useRef<HTMLInputElement>(null);
   // The step we were on before entering the publish flow (タイトル設定 → スケジュール
   // → 公開確認). Backing out restores it so the step bar never stays stuck on 6/7/8.
@@ -1660,6 +1689,7 @@ export default function Page() {
     setSeoOpen(false);
     setSeoKw([]);
     setSeoDelta(null);
+    setSeoStale(false);
     seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
@@ -1711,6 +1741,7 @@ export default function Page() {
     setSeoOpen(false);
     setSeoKw([]);
     setSeoDelta(null);
+    setSeoStale(false);
     seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
@@ -1951,6 +1982,7 @@ export default function Page() {
             // live-preview pane (region C), not the chat stream. We also drop a
             // small marker in the chat so the conversation reads naturally, and
             // auto-switch the mobile view to the preview so the user sees it.
+            const isRevision = draftRef.current != null;
             setDraft(evt.draft);
             setDrafting(false);
             setPublishConfirming(false);
@@ -1963,7 +1995,16 @@ export default function Page() {
             // Draft written → 内容(1)・画像(2)・AI要約(3) done; SEOチェック(4) is next
             // (the canned options offer it). Don't jump to プレビュー(5) yet.
             markDone(1, 2, 3);
-            reachStep(4);
+            if (isRevision) {
+              // The draft CHANGED: checkmarks past this point (SEO, title,
+              // schedule) described the old version, so the bar moves back to
+              // the post-draft point instead of pretending nothing happened.
+              setStep(4);
+              setStepsDone((d) => d.filter((n) => n <= 3));
+              if (seoScoreRef.current != null) setSeoStale(true);
+            } else {
+              reachStep(4);
+            }
           } else if (evt.type === "seo") {
             // Open the dedicated SEO screen; pre-select the top 2 keyword
             // candidates (matches the mockup's "2つ選択中"). Drop a chat marker.
@@ -1972,6 +2013,7 @@ export default function Page() {
             setSeoDelta(prev != null ? evt.report.score - prev : null);
             seoScoreRef.current = evt.report.score;
             setSeoReport(evt.report);
+            setSeoStale(false); // fresh report describes the current draft
             setSeoKw((evt.report.keywords ?? []).slice(0, 2).map((k: SeoKeyword) => k.term));
             setSeoOpen(true);
             setMessages((m) => [...m, { role: "assistant", text: "", seoMarker: true }]);
@@ -2225,6 +2267,11 @@ export default function Page() {
           stepsDone={stepsDone}
           selectedKw={seoKw}
           delta={seoDelta}
+          stale={seoStale}
+          onRecheck={() => {
+            setSeoOpen(false);
+            send("最新の下書きの内容で、SEOチェックをもう一度お願いします。");
+          }}
           onToggleKw={toggleSeoKw}
           onOptimize={() => {
             if (seoKw.length === 0) return;
@@ -2420,7 +2467,9 @@ export default function Page() {
                       className="draft-chip"
                       onClick={() => seoReport && setSeoOpen(true)}
                     >
-                      ✦ SEOチェックが完了しました。結果を見る
+                      {seoStale
+                        ? "✦ SEOチェック結果を見る（変更前の内容です・再チェックは任意）"
+                        : "✦ SEOチェックが完了しました。結果を見る"}
                     </button>
                   )}
                 </div>
