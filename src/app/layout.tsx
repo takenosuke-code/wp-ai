@@ -11,6 +11,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Needed for env(safe-area-inset-bottom) to be non-zero on notched iPhones,
+  // so the mobile bottom tab bar clears the home-indicator area.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

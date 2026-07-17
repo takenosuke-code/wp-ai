@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { wantsToFinish } from "@/lib/chatIntent";
 
 type DraftPreview = {
@@ -376,6 +377,43 @@ function StepBar({ current, done }: { current: number; done: number[] }) {
   );
 }
 
+// ── Mobile chrome (Variant A: bottom tabs + step chip + one big next button) ──
+// Everything below renders ONLY on phones (≤720px, via useIsMobile) and is
+// wrapped in MobileChromeBoundary. If any of it throws, the boundary flips the
+// page into "legacy mobile" mode (the pre-tabs UI, which is fully functional)
+// and the desktop layout is never affected — it simply never mounts this code.
+const MOBILE_BP = "(max-width: 720px)";
+
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_BP);
+    const update = () => setMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return mobile;
+}
+
+class MobileChromeBoundary extends Component<
+  { onBroken: () => void; children: ReactNode },
+  { broken: boolean }
+> {
+  state = { broken: false };
+  static getDerivedStateFromError() {
+    return { broken: true };
+  }
+  componentDidCatch() {
+    // Tell the page to fall back to the legacy mobile UI (and stop mounting
+    // ALL mobile chrome) so a bug here can never leave the phone stuck.
+    this.props.onBroken();
+  }
+  render() {
+    return this.state.broken ? null : this.props.children;
+  }
+}
+
 // ── SEO + competitor report card (rendered from the seo_analyze tool) ────────
 function ScoreRing({ score }: { score: number }) {
   const r = 26;
@@ -534,6 +572,7 @@ function SeoScreen({
   selectedKw,
   delta,
   stale,
+  busy,
   onToggleKw,
   onOptimize,
   onRecheck,
@@ -546,6 +585,9 @@ function SeoScreen({
   selectedKw: string[];
   delta: number | null;
   stale: boolean;
+  // While the AI is still finishing its turn, send() would silently drop a new
+  // message — so the buttons that talk to the AI are disabled (never "dead").
+  busy: boolean;
   onToggleKw: (term: string) => void;
   onOptimize: () => void;
   onRecheck: () => void;
@@ -620,8 +662,8 @@ function SeoScreen({
             <span className="seo-stale-txt">
               この結果は<strong>変更前の下書き</strong>に基づいています。このまま公開しても問題ありません（再チェックは任意）。
             </span>
-            <button className="ghost-btn seo-stale-btn" onClick={onRecheck}>
-              再チェックする
+            <button className="ghost-btn seo-stale-btn" onClick={onRecheck} disabled={busy}>
+              {busy ? "AIが作業中…" : "再チェックする"}
             </button>
           </div>
         )}
@@ -732,9 +774,9 @@ function SeoScreen({
             <button
               className="kw-optimize"
               onClick={onOptimize}
-              disabled={selectedKw.length === 0}
+              disabled={selectedKw.length === 0 || busy}
             >
-              選択したキーワードで記事を最適化 →
+              {busy ? "AIが作業中…" : "選択したキーワードで記事を最適化 →"}
             </button>
           </div>
 
@@ -794,6 +836,124 @@ function SeoScreen({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Mobile step sheet: the 8-step list as a bottom sheet (tap chip to open) ──
+// Rows are tappable and NAVIGATE (chat / preview / SEO / publish flow); steps
+// that need a draft are disabled with a hint until one exists.
+function MobileStepSheet({
+  step,
+  stepsDone,
+  hasDraft,
+  hasSeo,
+  busy,
+  onClose,
+  onGo,
+}: {
+  step: number;
+  stepsDone: number[];
+  hasDraft: boolean;
+  hasSeo: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onGo: (n: number) => void;
+}) {
+  return (
+    <div className="msheet-backdrop" onClick={onClose}>
+      <div
+        className="msheet"
+        role="dialog"
+        aria-label="投稿までの流れ"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="msheet-head">
+          <span className="msheet-title">投稿までの流れ</span>
+          <span className="msheet-sub">タップするとその画面に移動します</span>
+          <button className="msheet-x" onClick={onClose} aria-label="閉じる">
+            ✕
+          </button>
+        </div>
+        <ol className="msteps">
+          {STEPS.map((label, i) => {
+            const n = i + 1;
+            const state = stepsDone.includes(n) ? "done" : n === step ? "active" : "todo";
+            // 1–3 always reachable; 4 needs a draft (or an existing report to
+            // re-open); 5–8 need a draft. Running the SEO check needs the AI
+            // to be idle (viewing an existing report is always fine).
+            const enabled =
+              n <= 3 || (n === 4 ? hasSeo || (hasDraft && !busy) : hasDraft);
+            return (
+              <li key={n}>
+                <button
+                  className={`mstep ${state}`}
+                  disabled={!enabled}
+                  onClick={() => onGo(n)}
+                >
+                  <span className="mstep-ic">
+                    {state === "done" ? (
+                      <Ic d="M5 12l4.5 4.5L19 6" sw={2.4} />
+                    ) : (
+                      <Ic d={SEO_STEP_ICONS[i]} />
+                    )}
+                  </span>
+                  <span className="mstep-txt">
+                    <span className="mstep-n">STEP {String(n).padStart(2, "0")}</span>
+                    <span className="mstep-label">{label}</span>
+                  </span>
+                  {!enabled ? (
+                    <span className="mstep-hint">下書きの後</span>
+                  ) : state === "active" ? (
+                    <span className="mstep-chev">›</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile bottom tab bar: チャット / プレビュー / 記事 ───────────────────────
+function MobileTabs({
+  view,
+  panelOpen,
+  previewBadge,
+  blogCount,
+  onChat,
+  onPreview,
+  onArticles,
+}: {
+  view: "chat" | "preview";
+  panelOpen: boolean;
+  previewBadge: boolean;
+  blogCount: number;
+  onChat: () => void;
+  onPreview: () => void;
+  onArticles: () => void;
+}) {
+  const chatOn = view === "chat" && !panelOpen;
+  const prevOn = view === "preview" && !panelOpen;
+  return (
+    <nav className="mtabs" aria-label="画面の切り替え">
+      <button className={`mtab ${chatOn ? "on" : ""}`} onClick={onChat} aria-current={chatOn ? "page" : undefined}>
+        <span className="mtab-ic" aria-hidden="true">💬</span>
+        チャット
+      </button>
+      <button className={`mtab ${prevOn ? "on" : ""}`} onClick={onPreview} aria-current={prevOn ? "page" : undefined}>
+        <span className={`mtab-ic ${previewBadge && !prevOn ? "dot" : ""}`} aria-hidden="true">👁</span>
+        プレビュー
+      </button>
+      <button className={`mtab ${panelOpen ? "on" : ""}`} onClick={onArticles} aria-current={panelOpen ? "page" : undefined}>
+        <span className="mtab-ic" aria-hidden="true">
+          📚
+          {blogCount > 0 && <span className="mtab-count">{blogCount}</span>}
+        </span>
+        記事
+      </button>
+    </nav>
   );
 }
 
@@ -1547,6 +1707,31 @@ export default function Page() {
   const [panelOpen, setPanelOpen] = useState(false);
   // Mobile: which body column is shown (the two columns stack/swap on phones).
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
+  // ── Variant A mobile chrome (tabs + step chip + next button + ready toast) ──
+  // Mounted ONLY when the viewport is a phone; if any of it crashes, the
+  // boundary sets mChromeBroken and the page reverts to the legacy mobile UI
+  // (which stays fully functional underneath). Desktop never mounts it at all.
+  const isMobile = useIsMobile();
+  const [mChromeBroken, setMChromeBroken] = useState(false);
+  const mobileChrome = isMobile && !mChromeBroken;
+  // The step sheet (tap the STEP chip to open the full 8-step list).
+  const [mStepsOpen, setMStepsOpen] = useState(false);
+  // 「ブログができました」notification: tap → preview tab. Also a dot badge on
+  // the プレビュー tab until the user looks at the new/updated draft.
+  const [draftToast, setDraftToast] = useState<null | "new" | "updated">(null);
+  const [previewBadge, setPreviewBadge] = useState(false);
+  // Readable inside the async stream handler (state would be a render behind).
+  const mobileUIRef = useRef(false);
+  useEffect(() => {
+    mobileUIRef.current = mobileChrome;
+  }, [mobileChrome]);
+  // Looking at the preview (any way of getting there) clears the notification.
+  useEffect(() => {
+    if (mobileView === "preview") {
+      setDraftToast(null);
+      setPreviewBadge(false);
+    }
+  }, [mobileView]);
   // Graceful error recovery: when a chat turn fails (network, 409 busy, server
   // error), we keep the failed user message here and show an error card with a
   // 再試行 button. Retrying re-sends the message; the server re-reads the FULL
@@ -1693,6 +1878,9 @@ export default function Page() {
     seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
+    setMStepsOpen(false);
+    setDraftToast(null);
+    setPreviewBadge(false);
     const res = await fetch(`/api/conversations/${id}`).catch(() => null);
     if (res?.ok) {
       const data = await res.json().catch(() => null);
@@ -1745,6 +1933,9 @@ export default function Page() {
     seoScoreRef.current = null;
     setMobileView("chat");
     setSideOpen(false);
+    setMStepsOpen(false);
+    setDraftToast(null);
+    setPreviewBadge(false);
     textareaRef.current?.focus();
   }
 
@@ -1986,7 +2177,15 @@ export default function Page() {
             setDraft(evt.draft);
             setDrafting(false);
             setPublishConfirming(false);
-            setMobileView("preview");
+            if (mobileUIRef.current) {
+              // Phone (Variant A): don't yank the user to another screen —
+              // show a tappable 「ブログができました」notification + a dot on
+              // the プレビュー tab, and let them go look when ready.
+              setDraftToast(isRevision ? "updated" : "new");
+              setPreviewBadge(true);
+            } else {
+              setMobileView("preview");
+            }
             setMessages((m) => [
               ...m,
               { role: "assistant", text: "", draftMarker: true },
@@ -2108,6 +2307,22 @@ export default function Page() {
     !busy && !streaming && last && last.role === "assistant" && last.options?.length
       ? last.options
       : null;
+  // Is the newest confirm card still awaiting OK/直したい? Marker bubbles after
+  // it (image uploads, draft/SEO chips) don't retire it — mirrors the
+  // ConfirmCard disabled rule. Drives the mobile big-next button.
+  let confirmActive = false;
+  if (!busy && !streaming) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const mm = messages[i];
+      if (mm.role === "assistant" && mm.confirm) {
+        confirmActive = !messages
+          .slice(i + 1)
+          .some((x) => x.text.trim() !== "" || x.confirm);
+        break;
+      }
+      if (mm.text.trim() !== "") break; // a real reply retires older confirms
+    }
+  }
 
   if (authed === null) {
     return (
@@ -2234,8 +2449,99 @@ export default function Page() {
     );
   }
 
+  // ── Mobile (Variant A): the ONE big "next action" button ───────────────────
+  // Mirrors the flow state: OKする → SEOチェック → タイトル設定へ → 公開する.
+  // Every action here re-uses an existing flow (send / resolveImageStep /
+  // startPublish) — nothing new can happen that the desktop UI can't do.
+  type MobileNext = {
+    label: string;
+    onClick?: () => void;
+    disabled?: boolean;
+    skip?: { label: string; onClick: () => void };
+  };
+  function computeMobileNext(): MobileNext | null {
+    // Full-screen overlays own their buttons — no floating next action under them.
+    if (titleOpen || scheduleOpen || publishConfirming || seoOpen) return null;
+    if (busy || streaming) return { label: "✦ AIが作業中です…", disabled: true };
+    if (chatError) return null; // the error card owns 再試行
+    if (stepsDone.includes(8))
+      return { label: "✓ 公開されました！記事一覧を見る", onClick: () => setPanelOpen(true) };
+    if (heldConfirm && !imageAsked)
+      return {
+        label: chatImages.length > 0 ? "次へ：この画像で進む" : "次へ：画像なしで進む",
+        onClick: resolveImageStep,
+      };
+    if (confirmActive)
+      return {
+        label: "✦ 次へ：OKして下書きを作成",
+        onClick: () => send("OK、この内容で進めてください。"),
+      };
+    if (draft) {
+      if (!seoReport && !stepsDone.includes(4))
+        return {
+          label: "次へ：SEOチェックをする",
+          onClick: () => send("SEOチェックをお願いします。"),
+          skip: { label: "スキップしてタイトル設定へ →", onClick: startPublish },
+        };
+      return { label: "次へ：タイトル設定へ進む →", onClick: startPublish };
+    }
+    if (choices?.length) return { label: "おまかせで進めて", onClick: onContinue };
+    return null;
+  }
+
+  // Step-sheet navigation: jump to the screen where step n happens. Steps that
+  // need a draft are disabled in the sheet, so every enabled tap is safe.
+  function gotoMobileStep(n: number) {
+    setMStepsOpen(false);
+    setSideOpen(false);
+    if (n <= 3) {
+      setPanelOpen(false);
+      // 画像をアップ lives in the preview (per-section + slots) once a draft
+      // exists; before that it's part of the chat flow.
+      if (n === 2 && draft) setMobileView("preview");
+      else setMobileView("chat");
+      return;
+    }
+    if (n === 4) {
+      setPanelOpen(false);
+      if (seoReport) setSeoOpen(true);
+      else if (draft) {
+        setMobileView("chat");
+        send("SEOチェックをお願いします。");
+      }
+      return;
+    }
+    if (n === 5) {
+      setPanelOpen(false);
+      setMobileView("preview");
+      return;
+    }
+    // 6 タイトル設定 / 7 スケジュール / 8 公開 all enter through the same
+    // guided publish flow (title → schedule → confirm), which supports 戻る.
+    if (draft) startPublish();
+  }
+
+  const mobileNext = mobileChrome ? computeMobileNext() : null;
+  const mobileNextBar = mobileNext && (
+    <div className="mnext">
+      <button
+        className="mnext-btn"
+        onClick={mobileNext.onClick}
+        disabled={mobileNext.disabled || !mobileNext.onClick}
+      >
+        {mobileNext.label}
+      </button>
+      {mobileNext.skip && (
+        <button className="mnext-skip" onClick={mobileNext.skip.onClick}>
+          {mobileNext.skip.label}
+        </button>
+      )}
+    </div>
+  );
+  const onMobileBroken = () => setMChromeBroken(true);
+
   return (
-    <div className="app">
+    <div className={`app${mobileChrome ? " has-mtabs" : ""}`}>
       {titleOpen && draft && (
         <TitleSettings
           draft={draft}
@@ -2268,6 +2574,7 @@ export default function Page() {
           selectedKw={seoKw}
           delta={seoDelta}
           stale={seoStale}
+          busy={busy}
           onRecheck={() => {
             setSeoOpen(false);
             send("最新の下書きの内容で、SEOチェックをもう一度お願いします。");
@@ -2346,7 +2653,7 @@ export default function Page() {
             公開済み<span className="brand-panel-count">{blogs.length}</span>
           </button>
           <button
-            className="ghost-btn"
+            className="ghost-btn topbar-eye"
             onClick={() => setMobileView("preview")}
             title="公開後の見た目を確認"
           >
@@ -2365,6 +2672,74 @@ export default function Page() {
 
       {/* ── Region B: full-width 8-step pill row ──────────────────────────── */}
       <StepBar current={step} done={stepsDone} />
+
+      {/* ── Mobile chrome (Variant A) — phones only; crash-isolated ───────── */}
+      {mobileChrome && (
+        <MobileChromeBoundary onBroken={onMobileBroken}>
+          {/* the 8 pills collapse into one tappable progress chip */}
+          <button
+            className="mstepchip"
+            onClick={() => setMStepsOpen(true)}
+            aria-label={`ステップ ${step}/8 ${STEPS[step - 1]} — タップして全ステップを見る`}
+          >
+            <span className="mstepchip-n">STEP {step}/8</span>
+            <span className="mstepchip-l">{STEPS[step - 1]}</span>
+            <span className="mstepchip-bar" aria-hidden="true">
+              <span
+                className="mstepchip-fill"
+                style={{ width: `${Math.round((step / STEPS.length) * 100)}%` }}
+              />
+            </span>
+            <span className="mstepchip-chev" aria-hidden="true">›</span>
+          </button>
+          {mStepsOpen && (
+            <MobileStepSheet
+              step={step}
+              stepsDone={stepsDone}
+              hasDraft={!!draft}
+              hasSeo={!!seoReport}
+              busy={busy}
+              onClose={() => setMStepsOpen(false)}
+              onGo={gotoMobileStep}
+            />
+          )}
+          {/* 「ブログができました」notification → tap to open the preview */}
+          {draftToast && (
+            <button className="mtoast" onClick={() => setMobileView("preview")}>
+              <span className="mtoast-spark" aria-hidden="true">✦</span>
+              <span className="mtoast-t">
+                <b>
+                  {draftToast === "new"
+                    ? "ブログの下書きができました！"
+                    : "下書きを更新しました！"}
+                </b>
+                <span>タップしてプレビューを見る</span>
+              </span>
+              <span className="mtoast-chev" aria-hidden="true">›</span>
+            </button>
+          )}
+          <MobileTabs
+            view={mobileView}
+            panelOpen={panelOpen}
+            previewBadge={previewBadge}
+            blogCount={blogs.length}
+            onChat={() => {
+              setPanelOpen(false);
+              setSideOpen(false);
+              setMobileView("chat");
+            }}
+            onPreview={() => {
+              setPanelOpen(false);
+              setSideOpen(false);
+              setMobileView("preview");
+            }}
+            onArticles={() => {
+              setSideOpen(false);
+              setPanelOpen(true);
+            }}
+          />
+        </MobileChromeBoundary>
+      )}
 
       {/* ── Region C: two-column body (chat | live preview) ───────────────── */}
       <div className={`body view-${mobileView}`}>
@@ -2578,6 +2953,13 @@ export default function Page() {
             </div>
           </div>
 
+          {/* mobile: the one big "next action" button, docked above the composer */}
+          {mobileChrome && mobileNextBar && (
+            <MobileChromeBoundary onBroken={onMobileBroken}>
+              {mobileNextBar}
+            </MobileChromeBoundary>
+          )}
+
           <div className="composer">
             <input ref={chatFileRef} type="file" accept="image/*" hidden onChange={onChatImage} />
             {uploadError && (
@@ -2668,6 +3050,12 @@ export default function Page() {
             <PreviewLoading />
           ) : (
             <PreviewEmpty />
+          )}
+          {/* mobile: the same next-action button at the bottom of the preview */}
+          {mobileChrome && mobileNextBar && (
+            <MobileChromeBoundary onBroken={onMobileBroken}>
+              {mobileNextBar}
+            </MobileChromeBoundary>
           )}
         </div>
       </div>

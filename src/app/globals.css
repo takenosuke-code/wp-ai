@@ -3393,3 +3393,433 @@ body {
   padding: 1px 7px;
   vertical-align: middle;
 }
+
+/* ── Mobile chrome (Variant A: bottom tabs + step chip + one big next button) ──
+   Phones only. Every rule is BOTH inside the ≤720px media query AND gated on
+   .app.has-mtabs — the class the page adds only while the mobile chrome is
+   mounted and healthy. If the chrome crashes, the class disappears and every
+   rule here turns off, restoring the legacy mobile layout. Desktop (>720px)
+   never matches the media query at all. */
+@media (max-width: 720px) {
+  .app.has-mtabs {
+    --mtabs-h: calc(54px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* legacy affordances replaced by the chrome (auto-restored on fallback) */
+  .app.has-mtabs .steps {
+    display: none;
+  }
+  .app.has-mtabs .preview-back {
+    display: none;
+  }
+  .app.has-mtabs .topbar-eye {
+    display: none;
+  }
+  .app.has-mtabs .composer-hint {
+    visibility: hidden; /* ⌘+↵ means nothing on a phone; keep layout stable */
+  }
+
+  /* make room for the fixed bottom tab bar */
+  .app.has-mtabs .chat-col,
+  .app.has-mtabs .preview-col {
+    bottom: var(--mtabs-h);
+  }
+  .app.has-mtabs .panel .list {
+    padding-bottom: calc(var(--mtabs-h) + 14px);
+  }
+  .app.has-mtabs .side {
+    padding-bottom: var(--mtabs-h);
+  }
+  /* the preview fills the column so the next bar can dock under it */
+  .app.has-mtabs .preview-col .preview {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  /* ── STEP chip (the 8 pills collapsed into one tappable progress row) ── */
+  .app.has-mtabs .mstepchip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    margin: 10px 12px 4px;
+    background: var(--ai-wash);
+    border: 1px solid var(--ai);
+    border-radius: 12px;
+    padding: 10px 13px;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .app.has-mtabs .mstepchip-n {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--ai);
+    flex: none;
+  }
+  .app.has-mtabs .mstepchip-l {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    flex: none;
+    white-space: nowrap;
+  }
+  .app.has-mtabs .mstepchip-bar {
+    flex: 1;
+    height: 5px;
+    border-radius: 999px;
+    background: #dcdcf4;
+    overflow: hidden;
+    min-width: 30px;
+  }
+  .app.has-mtabs .mstepchip-fill {
+    display: block;
+    height: 100%;
+    background: var(--ai);
+    border-radius: 999px;
+    transition: width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .app.has-mtabs .mstepchip-chev {
+    color: var(--ai);
+    font-weight: 700;
+    flex: none;
+  }
+
+  /* ── bottom tab bar: チャット / プレビュー / 記事 ─────────────────────── */
+  .app.has-mtabs .mtabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--mtabs-h);
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    z-index: 45; /* above the drawers (40) so tabs stay tappable */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .app.has-mtabs .mtab {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 7px 0 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+  .app.has-mtabs .mtab.on {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .app.has-mtabs .mtab-ic {
+    display: block;
+    font-size: 19px;
+    line-height: 1;
+    position: relative;
+  }
+  /* unseen-draft dot on プレビュー */
+  .app.has-mtabs .mtab-ic.dot::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: -8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ai);
+    border: 1.5px solid var(--surface);
+  }
+  .app.has-mtabs .mtab-count {
+    position: absolute;
+    top: -5px;
+    right: -14px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9.5px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    line-height: 1;
+  }
+
+  /* ── the ONE big next-action button (docked above the composer) ──────── */
+  .app.has-mtabs .mnext {
+    flex: none;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .app.has-mtabs .mnext-btn {
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    background: var(--ai);
+    color: #fff;
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    padding: 14px;
+    cursor: pointer;
+    min-height: 48px;
+  }
+  .app.has-mtabs .mnext-btn:disabled {
+    background: var(--ai-wash);
+    color: var(--ai-ink);
+    cursor: default;
+  }
+  .app.has-mtabs .mnext-skip {
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: 4px;
+    cursor: pointer;
+    min-height: 32px;
+  }
+
+  /* ── 「ブログができました」notification — tap to open the preview ─────────
+     In-flow under the STEP chip (NOT fixed): a floating toast at the bottom
+     covered the send button, so the user couldn't keep chatting under it. */
+  .app.has-mtabs .mtoast {
+    flex: none;
+    margin: 6px 12px 2px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    background: var(--ai);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 13px 15px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 10px 28px rgba(79, 70, 229, 0.38);
+    animation: mtoast-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .app.has-mtabs .mtoast-spark {
+    font-size: 18px;
+    flex: none;
+  }
+  .app.has-mtabs .mtoast-t {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .app.has-mtabs .mtoast-t b {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .app.has-mtabs .mtoast-t span {
+    font-size: 11.5px;
+    opacity: 0.85;
+  }
+  .app.has-mtabs .mtoast-chev {
+    margin-left: auto;
+    font-size: 18px;
+    font-weight: 700;
+    flex: none;
+  }
+
+  /* ── step sheet (tap the chip → the full 8-step list, tappable rows) ──── */
+  .app.has-mtabs .msheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 25, 23, 0.34);
+    backdrop-filter: blur(2px);
+    z-index: 46;
+    display: flex;
+    align-items: flex-end;
+  }
+  .app.has-mtabs .msheet {
+    width: 100%;
+    max-height: 78vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-radius: 18px 18px 0 0;
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    animation: msheet-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .app.has-mtabs .msheet-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 4px 10px;
+  }
+  .app.has-mtabs .msheet-title {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .app.has-mtabs .msheet-sub {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .app.has-mtabs .msheet-x {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 9px;
+    width: 30px;
+    height: 30px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    flex: none;
+    align-self: center;
+  }
+  .app.has-mtabs .msteps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .app.has-mtabs .mstep {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 12px;
+    padding: 10px 10px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    min-height: 50px;
+  }
+  .app.has-mtabs .mstep:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .app.has-mtabs .mstep.active {
+    background: var(--ai-wash);
+    border-color: var(--ai);
+  }
+  .app.has-mtabs .mstep-ic {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+  }
+  .app.has-mtabs .mstep-ic svg {
+    width: 16px;
+    height: 16px;
+  }
+  .app.has-mtabs .mstep.done .mstep-ic {
+    background: var(--accent-wash);
+    border-color: var(--accent-wash);
+    color: var(--accent);
+  }
+  .app.has-mtabs .mstep.active .mstep-ic {
+    background: var(--ai);
+    border-color: var(--ai);
+    color: #fff;
+  }
+  .app.has-mtabs .mstep-txt {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .app.has-mtabs .mstep-n {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+  }
+  .app.has-mtabs .mstep.active .mstep-n {
+    color: var(--ai);
+  }
+  .app.has-mtabs .mstep-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .app.has-mtabs .mstep-hint {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    flex: none;
+  }
+  .app.has-mtabs .mstep-chev {
+    margin-left: auto;
+    color: var(--ai);
+    font-weight: 700;
+    flex: none;
+  }
+
+  /* ── bigger touch targets for the chat option chips ───────────────────── */
+  .app.has-mtabs .options .opt {
+    width: 100%;
+    text-align: left;
+    padding: 13px 15px;
+    font-size: 14px;
+    min-height: 46px;
+  }
+}
+
+@keyframes mtoast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes msheet-in {
+  from {
+    transform: translateY(24px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app.has-mtabs .mtoast,
+  .app.has-mtabs .msheet {
+    animation: none;
+  }
+}
+
+/* very small phones: tighten the chip + tabs so nothing wraps */
+@media (max-width: 384px) {
+  .app.has-mtabs .mstepchip {
+    gap: 8px;
+    padding: 9px 11px;
+  }
+  .app.has-mtabs .mstepchip-l {
+    font-size: 12px;
+  }
+  .app.has-mtabs .mtab {
+    font-size: 10px;
+  }
+}
